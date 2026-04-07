@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- [`go` >= 1.16.7](https://go.dev/doc/install)
+- [`go` >= 1.26.1](https://go.dev/doc/install)
 - [A valid github token with `repo` permissions](https://github.com/settings/tokens)
 - [make](https://en.wikipedia.org/wiki/Make_(software))
 

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/upsidr/merge-gatekeeper/internal/cli"
+	"league.dev/merge-gatekeeper/internal/cli"
 )
 
 var (

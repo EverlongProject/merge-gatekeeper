@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/upsidr/merge-gatekeeper/internal/github"
-	"github.com/upsidr/merge-gatekeeper/internal/github/mock"
-	"github.com/upsidr/merge-gatekeeper/internal/validators"
+	"league.dev/merge-gatekeeper/internal/github"
+	"league.dev/merge-gatekeeper/internal/github/mock"
+	"league.dev/merge-gatekeeper/internal/validators"
 )
 
 func stringPtr(str string) *string {
@@ -675,6 +675,33 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				wantErr: true,
 			}
 		}(),
+		"returns error when a completed check run has no conclusion": func() test {
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:   stringPtr("job-01"),
+								Status: stringPtr(checkRunCompletedStatus),
+							},
+						},
+					}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				wantErr: true,
+			}
+		}(),
 		"returns nil when no error occurs": func() test {
 			c := &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
@@ -776,13 +803,21 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 
 			c := &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					start := (opts.Page - 1) * opts.PerPage
+					if start >= len(statuses) {
+						return &github.CombinedStatus{TotalCount: &num_statuses}, &github.Response{}, nil
+					}
 					max := min(opts.Page*opts.PerPage, len(statuses))
-					sts := statuses[(opts.Page-1)*opts.PerPage : max]
-					l := len(sts)
+					sts := statuses[start:max]
+					totalCount := len(statuses)
+					resp := &github.Response{}
+					if max < len(statuses) {
+						resp.NextPage = opts.Page + 1
+					}
 					return &github.CombinedStatus{
 						Statuses:   sts,
-						TotalCount: &l,
-					}, nil, nil
+						TotalCount: &totalCount,
+					}, resp, nil
 				},
 				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
 					l := len(checkRuns)
@@ -829,13 +864,21 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 
 			c := &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					start := (opts.Page - 1) * opts.PerPage
+					if start >= len(statuses) {
+						return &github.CombinedStatus{TotalCount: &num_statuses}, &github.Response{}, nil
+					}
 					max := min(opts.Page*opts.PerPage, len(statuses))
-					sts := statuses[(opts.Page-1)*opts.PerPage : max]
-					l := len(sts)
+					sts := statuses[start:max]
+					totalCount := len(statuses)
+					resp := &github.Response{}
+					if max < len(statuses) {
+						resp.NextPage = opts.Page + 1
+					}
 					return &github.CombinedStatus{
 						Statuses:   sts,
-						TotalCount: &l,
-					}, nil, nil
+						TotalCount: &totalCount,
+					}, resp, nil
 				},
 				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
 					l := len(checkRuns)
@@ -857,8 +900,8 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				want:    expectedGhaStatuses,
 			}
 		}(),
-		"succeeds to retrieve 587 statuses": func() test {
-			num_statuses := 587
+		"succeeds to retrieve 440 statuses": func() test {
+			num_statuses := 440
 			statuses := make([]*github.RepoStatus, num_statuses)
 			checkRuns := make([]*github.CheckRun, num_statuses)
 			expectedGhaStatuses := make([]*ghaStatus, num_statuses)
@@ -882,13 +925,21 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 
 			c := &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					start := (opts.Page - 1) * opts.PerPage
+					if start >= len(statuses) {
+						return &github.CombinedStatus{TotalCount: &num_statuses}, &github.Response{}, nil
+					}
 					max := min(opts.Page*opts.PerPage, len(statuses))
-					sts := statuses[(opts.Page-1)*opts.PerPage : max]
-					l := len(sts)
+					sts := statuses[start:max]
+					totalCount := len(statuses)
+					resp := &github.Response{}
+					if max < len(statuses) {
+						resp.NextPage = opts.Page + 1
+					}
 					return &github.CombinedStatus{
 						Statuses:   sts,
-						TotalCount: &l,
-					}, nil, nil
+						TotalCount: &totalCount,
+					}, resp, nil
 				},
 				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
 					l := len(checkRuns)

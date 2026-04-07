@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/upsidr/merge-gatekeeper/internal/github"
-	"github.com/upsidr/merge-gatekeeper/internal/multierror"
-	"github.com/upsidr/merge-gatekeeper/internal/validators"
+	"league.dev/merge-gatekeeper/internal/github"
+	"league.dev/merge-gatekeeper/internal/multierror"
+	"league.dev/merge-gatekeeper/internal/validators"
 )
 
 const (
@@ -152,15 +152,15 @@ func (sv *statusValidator) getCombinedStatus(ctx context.Context) ([]*github.Rep
 	var combined []*github.RepoStatus
 	page := 1
 	for {
-		c, _, err := sv.client.GetCombinedStatus(ctx, sv.owner, sv.repo, sv.ref, &github.ListOptions{PerPage: maxStatusesPerPage, Page: page})
+		c, resp, err := sv.client.GetCombinedStatus(ctx, sv.owner, sv.repo, sv.ref, &github.ListOptions{PerPage: maxStatusesPerPage, Page: page})
 		if err != nil {
 			return nil, err
 		}
 		combined = append(combined, c.Statuses...)
-		if c.GetTotalCount() < maxStatusesPerPage {
+		if resp == nil || resp.NextPage == 0 {
 			break
 		}
-		page++
+		page = resp.NextPage
 	}
 	return combined, nil
 }
@@ -233,6 +233,9 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 			ghaStatus.State = pendingState
 			ghaStatuses = append(ghaStatuses, ghaStatus)
 			continue
+		}
+		if run.Conclusion == nil {
+			return nil, fmt.Errorf("%w name: %v, status: %v, conclusion: %v", ErrInvalidCheckRunResponse, run.Name, run.Status, run.Conclusion)
 		}
 
 		switch *run.Conclusion {
