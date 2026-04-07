@@ -19,7 +19,7 @@ const defaultSelfJobName = "merge-gatekeeper"
 
 // These variables will be set by command line flags.
 var (
-	ghRepo              string // e.g) upsidr/merge-gatekeeper
+	ghRepo              string // e.g) EverlongProject/merge-gatekeeper
 	ghRef               string
 	timeoutSecond       uint
 	validateInvalSecond uint
