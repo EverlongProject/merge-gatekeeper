@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/upsidr/merge-gatekeeper/internal/validators"
-	"github.com/upsidr/merge-gatekeeper/internal/validators/mock"
+	"league.dev/merge-gatekeeper/internal/validators"
+	"league.dev/merge-gatekeeper/internal/validators/mock"
 )
 
 func TestMain(m *testing.M) {

@@ -13,7 +13,7 @@ jobs:
     name: Run Importer Generate for Markdowns
     runs-on: ubuntu-latest
     env:
-      GO_VERSION: 1.25.7
+      GO_VERSION: 1.26.1
     steps:
       - name: Check out
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

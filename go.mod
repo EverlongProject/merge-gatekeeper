@@ -1,6 +1,6 @@
 module league.dev/merge-gatekeeper
 
-go 1.25
+go 1.26
 
 require (
 	github.com/google/go-github/v38 v38.1.0
