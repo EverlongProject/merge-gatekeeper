@@ -3,11 +3,13 @@ package status
 import "fmt"
 
 type status struct {
-	totalJobs    []string
-	completeJobs []string
-	errJobs      []string
-	ignoredJobs  []string
-	succeeded    bool
+	totalJobs          []string
+	completeJobs       []string
+	errJobs            []string
+	ignoredJobs        []string
+	requiredJobs       []string
+	unseenRequiredJobs []string
+	succeeded          bool
 }
 
 func prettyPrintJobList(jobs []string) string {
@@ -26,6 +28,10 @@ func prettyPrintJobList(jobs []string) string {
 }
 
 func (s *status) Detail() string {
+	totalJobCount := len(s.totalJobs) + len(s.unseenRequiredJobs)
+	incompleteJobCount := len(s.getIncompleteJobs()) + len(s.unseenRequiredJobs)
+	completedJobCount := len(s.completeJobs)
+
 	result := fmt.Sprintf(
 		`%d out of %d
 
@@ -34,13 +40,17 @@ Completed job count:   %d
 Incompleted job count: %d
 Failed job count:      %d
 Ignored job count:     %d
+Required job count:    %d
+Unseen required count: %d
 `,
-		len(s.completeJobs), len(s.totalJobs),
-		len(s.totalJobs),
-		len(s.completeJobs),
-		len(s.getIncompleteJobs()),
+		completedJobCount, totalJobCount,
+		totalJobCount,
+		completedJobCount,
+		incompleteJobCount,
 		len(s.errJobs),
 		len(s.ignoredJobs),
+		len(s.requiredJobs),
+		len(s.unseenRequiredJobs),
 	)
 
 	result = fmt.Sprintf(`%s
@@ -60,6 +70,10 @@ Ignored job count:     %d
 %s
 ::endgroup::
 
+::group::Unseen required jobs
+%s
+::endgroup::
+
 ::group::All jobs
 %s
 ::endgroup::
@@ -69,6 +83,7 @@ Ignored job count:     %d
 		prettyPrintJobList(s.completeJobs),
 		prettyPrintJobList(s.getIncompleteJobs()),
 		prettyPrintJobList(s.ignoredJobs),
+		prettyPrintJobList(s.unseenRequiredJobs),
 		prettyPrintJobList(s.totalJobs),
 	)
 

@@ -33,20 +33,40 @@ func WithGitHubRef(ref string) Option {
 
 func WithIgnoredJobs(names string) Option {
 	return func(s *statusValidator) {
-		// TODO: Add more input validation, such as "," should not be a valid input.
-		if len(names) == 0 {
-			return // TODO: Return some clearer error
-		}
-
-		jobs := []string{}
-		ss := strings.Split(names, ",")
-		for _, s := range ss {
-			jobName := strings.TrimSpace(s)
-			if len(jobName) == 0 {
-				continue // TODO: Provide more clue to users
-			}
-			jobs = append(jobs, jobName)
-		}
-		s.ignoredJobs = jobs
+		s.ignoredJobs = parseJobNames(names)
 	}
+}
+
+func WithRequiredJobs(names string) Option {
+	return func(s *statusValidator) {
+		s.requiredJobs = parseJobNames(names)
+	}
+}
+
+func parseJobNames(names string) []string {
+	// TODO: Add more input validation, such as "," should not be a valid input.
+	if len(names) == 0 {
+		return nil
+	}
+
+	jobs := []string{}
+	seen := map[string]struct{}{}
+	ss := strings.Split(names, ",")
+	for _, s := range ss {
+		jobName := strings.TrimSpace(s)
+		if len(jobName) == 0 {
+			continue // TODO: Provide more clue to users
+		}
+		if _, ok := seen[jobName]; ok {
+			continue
+		}
+		seen[jobName] = struct{}{}
+		jobs = append(jobs, jobName)
+	}
+
+	if len(jobs) == 0 {
+		return []string{}
+	}
+
+	return jobs
 }

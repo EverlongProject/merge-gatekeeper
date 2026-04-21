@@ -43,12 +43,13 @@ type ghaStatus struct {
 }
 
 type statusValidator struct {
-	repo        string
-	owner       string
-	ref         string
-	selfJobName string
-	ignoredJobs []string
-	client      github.Client
+	repo         string
+	owner        string
+	ref          string
+	selfJobName  string
+	ignoredJobs  []string
+	requiredJobs []string
+	client       github.Client
 }
 
 func CreateValidator(c github.Client, opts ...Option) (validators.Validator, error) {
@@ -86,6 +87,17 @@ func (sv *statusValidator) validateFields() error {
 	if sv.client == nil {
 		errs = append(errs, errors.New("github client is empty"))
 	}
+	for _, required := range sv.requiredJobs {
+		if required == sv.selfJobName {
+			errs = append(errs, fmt.Errorf("required job must not include self job: %s", required))
+		}
+		for _, ignored := range sv.ignoredJobs {
+			if required == ignored {
+				errs = append(errs, fmt.Errorf("job must not be both ignored and required: %s", required))
+				break
+			}
+		}
+	}
 
 	if len(errs) != 0 {
 		return errs
@@ -109,9 +121,16 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 	}
 
 	st.ignoredJobs = append(st.ignoredJobs, sv.ignoredJobs...)
+	if len(sv.requiredJobs) != 0 {
+		st.requiredJobs = append(st.requiredJobs, sv.requiredJobs...)
+	}
+
+	observedJobs := make(map[string]struct{}, len(ghaStatuses))
 
 	var successCnt int
 	for _, ghaStatus := range ghaStatuses {
+		observedJobs[ghaStatus.Job] = struct{}{}
+
 		var toIgnore bool
 		for _, ignored := range sv.ignoredJobs {
 			if ghaStatus.Job == ignored {
@@ -139,8 +158,14 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 	if len(st.errJobs) != 0 {
 		return nil, errors.New(st.Detail())
 	}
+	for _, required := range sv.requiredJobs {
+		if _, ok := observedJobs[required]; ok {
+			continue
+		}
+		st.unseenRequiredJobs = append(st.unseenRequiredJobs, required)
+	}
 
-	if len(ghaStatuses) != successCnt {
+	if len(ghaStatuses) != successCnt || len(st.unseenRequiredJobs) != 0 {
 		st.succeeded = false
 		return st, nil
 	}
@@ -242,7 +267,7 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 		case checkRunNeutralConclusion, checkRunSuccessConclusion:
 			ghaStatus.State = successState
 		case checkRunSkipConclusion:
-			continue
+			ghaStatus.State = successState
 		default:
 			ghaStatus.State = errorState
 		}

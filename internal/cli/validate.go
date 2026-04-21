@@ -25,6 +25,7 @@ var (
 	validateInvalSecond uint
 	selfJobName         string
 	ignoredJobs         string
+	requiredJobs        string
 )
 
 func validateCmd() *cobra.Command {
@@ -50,6 +51,7 @@ func validateCmd() *cobra.Command {
 				status.WithGitHubOwnerAndRepo(owner, repo),
 				status.WithGitHubRef(ghRef),
 				status.WithIgnoredJobs(ignoredJobs),
+				status.WithRequiredJobs(requiredJobs),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create validator: %w", err)
@@ -71,6 +73,7 @@ func validateCmd() *cobra.Command {
 	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second")
 
 	cmd.PersistentFlags().StringVarP(&ignoredJobs, "ignored", "i", "", "set ignored jobs (comma-separated list)")
+	cmd.PersistentFlags().StringVar(&requiredJobs, "required", "", "set required jobs (comma-separated list)")
 
 	return cmd
 }
