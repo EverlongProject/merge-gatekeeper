@@ -15,6 +15,7 @@ import (
 func TestMain(m *testing.M) {
 	validateInvalSecond = 1
 	timeoutSecond = 2
+	successConfirmationPolls = 0
 	os.Exit(m.Run())
 }
 
@@ -66,10 +67,12 @@ func Test_ownerAndRepository(t *testing.T) {
 
 func Test_doValidateCmd(t *testing.T) {
 	tests := map[string]struct {
-		ctx     context.Context
-		cmd     *cobra.Command
-		vs      []validators.Validator
-		wantErr bool
+		ctx                      context.Context
+		cmd                      *cobra.Command
+		vs                       []validators.Validator
+		successConfirmationPolls uint
+		timeoutSecond            uint
+		wantErr                  bool
 	}{
 		"returns nil when the validation is success": {
 			ctx: context.Background(),
@@ -94,7 +97,59 @@ func Test_doValidateCmd(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			successConfirmationPolls: 0,
+			timeoutSecond:            2,
+			wantErr:                  false,
+		},
+		"returns nil after required confirmation polls succeed": {
+			ctx: context.Background(),
+			cmd: &cobra.Command{},
+			vs: []validators.Validator{
+				&mock.Validator{
+					NameFunc: func() string { return "validator-1" },
+					ValidateFunc: func() func(ctx context.Context) (validators.Status, error) {
+						calls := 0
+						return func(ctx context.Context) (validators.Status, error) {
+							calls++
+							return &mock.Status{
+								DetailFunc:    func() string { return "success" },
+								IsSuccessFunc: func() bool { return true },
+							}, nil
+						}
+					}(),
+				},
+			},
+			successConfirmationPolls: 2,
+			timeoutSecond:            5,
+			wantErr:                  false,
+		},
+		"resets confirmation streak when a later poll is not successful": {
+			ctx: context.Background(),
+			cmd: &cobra.Command{},
+			vs: []validators.Validator{
+				&mock.Validator{
+					NameFunc: func() string { return "validator-1" },
+					ValidateFunc: func() func(ctx context.Context) (validators.Status, error) {
+						calls := 0
+						return func(ctx context.Context) (validators.Status, error) {
+							calls++
+							statuses := []bool{true, false, true, true}
+							idx := calls - 1
+							if idx >= len(statuses) {
+								idx = len(statuses) - 1
+							}
+							ok := statuses[idx]
+							return &mock.Status{
+								DetailFunc:    func() string { return "status" },
+								IsSuccessFunc: func() bool { return ok },
+							}, nil
+						}
+					}(),
+				},
+			},
+			successConfirmationPolls: 1,
+			timeoutSecond:            5,
+			wantErr:                  false,
 		},
 		"returns error when the validation timed out": {
 			ctx: context.Background(),
@@ -119,7 +174,9 @@ func Test_doValidateCmd(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			successConfirmationPolls: 0,
+			timeoutSecond:            2,
+			wantErr:                  true,
 		},
 		"returns error when the validator return an error": {
 			ctx: context.Background(),
@@ -132,12 +189,23 @@ func Test_doValidateCmd(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			successConfirmationPolls: 0,
+			timeoutSecond:            2,
+			wantErr:                  true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			prevSuccessConfirmationPolls := successConfirmationPolls
+			prevTimeoutSecond := timeoutSecond
+			successConfirmationPolls = tt.successConfirmationPolls
+			timeoutSecond = tt.timeoutSecond
+			defer func() {
+				successConfirmationPolls = prevSuccessConfirmationPolls
+				timeoutSecond = prevTimeoutSecond
+			}()
+
 			if err := doValidateCmd(tt.ctx, tt.cmd, tt.vs...); (err != nil) != tt.wantErr {
 				t.Errorf("doValidateCmd() error = %v, wantErr %v", err, tt.wantErr)
 			}

@@ -78,6 +78,8 @@ jobs:
 
 You can find [more details here](/docs/action-usage.md).
 
+If your CI generates jobs dynamically and GitHub can register those child jobs slightly after Merge Gatekeeper first sees the workflow as green, set `success-confirmation-polls` to require additional consecutive successful polls before the action exits. Leave it at the default `0` unless you need that extra confirmation window.
+
 ## 🧪 Action Inputs
 
 There are some customisation available for Merge Gatekeeper.
@@ -90,6 +92,7 @@ There are some customisation available for Merge Gatekeeper.
 | `self`     | The name of Merge Gatekeeper job, and defaults to `merge-gatekeeper`. This is used to check other job status, and do not check Merge Gatekeeper itself. If you updated the GitHub Action job name from `merge-gatekeeper` to something else, you would need to specify the new name with this value. |          |
 | `interval` | Check interval to recheck the job status. Default is set to 5 (sec).                                                                                                                                                                                                                                 |          |
 | `timeout`  | Timeout setup to give up further check. Default is set to 600 (sec).                                                                                                                                                                                                                                 |          |
+| `success-confirmation-polls` | Number of additional consecutive successful polls required after Merge Gatekeeper first sees all validations as green. `0` keeps the current behavior.                                                                                                                                      |          |
 | `ignored`  | Jobs to ignore regardless of their statuses. Defined as a comma-separated list.                                                                                                                                                                                                                      |          |
 | `ref`      | Git ref to check out. This falls back to the HEAD for given PR, but can be set to any ref.                                                                                                                                                                                                           |          |
 

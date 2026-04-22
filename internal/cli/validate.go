@@ -19,12 +19,13 @@ const defaultSelfJobName = "merge-gatekeeper"
 
 // These variables will be set by command line flags.
 var (
-	ghRepo              string // e.g) EverlongProject/merge-gatekeeper
-	ghRef               string
-	timeoutSecond       uint
-	validateInvalSecond uint
-	selfJobName         string
-	ignoredJobs         string
+	ghRepo                   string // e.g) EverlongProject/merge-gatekeeper
+	ghRef                    string
+	timeoutSecond            uint
+	validateInvalSecond      uint
+	successConfirmationPolls uint
+	selfJobName              string
+	ignoredJobs              string
 )
 
 func validateCmd() *cobra.Command {
@@ -69,6 +70,7 @@ func validateCmd() *cobra.Command {
 
 	cmd.PersistentFlags().UintVar(&timeoutSecond, "timeout", 600, "set validate timeout second")
 	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second")
+	cmd.PersistentFlags().UintVar(&successConfirmationPolls, "success-confirmation-polls", 0, "set additional successful polls required after first green")
 
 	cmd.PersistentFlags().StringVarP(&ignoredJobs, "ignored", "i", "", "set ignored jobs (comma-separated list)")
 
@@ -103,6 +105,9 @@ func doValidateCmd(ctx context.Context, logger logger, vs ...validators.Validato
 	invalT := ticker.NewInstantTicker(time.Duration(validateInvalSecond) * time.Second)
 	defer invalT.Stop()
 
+	requiredSuccessPolls := successConfirmationPolls + 1
+	var consecutiveSuccessPolls uint
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,10 +124,19 @@ func doValidateCmd(ctx context.Context, logger logger, vs ...validators.Validato
 				}
 			}
 			if successCnt != len(vs) {
+				consecutiveSuccessPolls = 0
 				logger.PrintErrln("")
 				logger.PrintErrln("  WARNING: Validation is yet to be completed. This is most likely due to some other jobs still running.")
 				logger.PrintErrf("           Waiting for %d seconds before retrying.\n\n", validateInvalSecond)
 				break
+			}
+
+			consecutiveSuccessPolls++
+			if consecutiveSuccessPolls < requiredSuccessPolls {
+				remaining := requiredSuccessPolls - consecutiveSuccessPolls
+				logger.Println("")
+				logger.Printf("All validations are currently successful; waiting for %d additional successful poll(s) before completing.\n", remaining)
+				continue
 			}
 
 			logger.Println("All validations were successful!")
