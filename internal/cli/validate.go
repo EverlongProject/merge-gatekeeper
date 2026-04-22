@@ -102,6 +102,10 @@ func doValidateCmd(ctx context.Context, logger logger, vs ...validators.Validato
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecond)*time.Second)
 	defer cancel()
 
+	if successConfirmationPolls == ^uint(0) {
+		return fmt.Errorf("success-confirmation-polls is too large")
+	}
+
 	invalT := ticker.NewInstantTicker(time.Duration(validateInvalSecond) * time.Second)
 	defer invalT.Stop()
 

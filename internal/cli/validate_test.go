@@ -193,6 +193,14 @@ func Test_doValidateCmd(t *testing.T) {
 			timeoutSecond:            2,
 			wantErr:                  true,
 		},
+		"returns error when success confirmation polls is too large": {
+			ctx:                      context.Background(),
+			cmd:                      &cobra.Command{},
+			vs:                       []validators.Validator{},
+			successConfirmationPolls: ^uint(0),
+			timeoutSecond:            2,
+			wantErr:                  true,
+		},
 	}
 
 	for name, tt := range tests {
