@@ -944,6 +944,56 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				},
 			}
 		}(),
+		"does not ignore check runs from repository workflows": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("test (ubuntu-latest, go1.23)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/11/job/22"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(789)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{
+						WorkflowRuns: []*github.WorkflowRun{
+							{
+								Name: stringPtr("CI"),
+								Path: stringPtr(".github/workflows/ci.yml"),
+							},
+						},
+					}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				wantErr: false,
+				want: []*ghaStatus{
+					{
+						Job:   "test (ubuntu-latest, go1.23)",
+						State: successState,
+					},
+				},
+				workflowLookupCalls:     &lookupCalls,
+				wantWorkflowLookupCalls: 1,
+			}
+		}(),
 		"succeeds to retrieve 100 statuses": func() test {
 			num_statuses := 100
 			statuses := make([]*github.RepoStatus, num_statuses)
@@ -1135,7 +1185,7 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				owner:                        tt.fields.owner,
 				ref:                          tt.fields.ref,
 				selfJobName:                  tt.fields.selfJobName,
-				ignoreDynamicGitHubWorkflows: name == "marks dynamic workflow check runs for ignoring and reuses the workflow lookup cache" || name == "records failed workflow lookups while keeping the check run in scope",
+				ignoreDynamicGitHubWorkflows: name == "marks dynamic workflow check runs for ignoring and reuses the workflow lookup cache" || name == "records failed workflow lookups while keeping the check run in scope" || name == "does not ignore check runs from repository workflows",
 				client:                       tt.fields.client,
 			}
 			got, err := sv.listGhaStatuses(tt.ctx)
