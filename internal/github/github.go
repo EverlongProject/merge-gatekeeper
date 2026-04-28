@@ -26,7 +26,7 @@ type (
 type Client interface {
 	GetCombinedStatus(ctx context.Context, owner, repo, ref string, opts *ListOptions) (*CombinedStatus, *Response, error)
 	ListCheckRunsForRef(ctx context.Context, owner, repo, ref string, opts *ListCheckRunsOptions) (*ListCheckRunsResults, *Response, error)
-	ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*github.WorkflowRuns, *Response, error)
+	ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*WorkflowRuns, *Response, error)
 }
 
 type client struct {
@@ -51,6 +51,6 @@ func (c *client) ListCheckRunsForRef(ctx context.Context, owner, repo, ref strin
 	return c.ghc.Checks.ListCheckRunsForRef(ctx, owner, repo, ref, opts)
 }
 
-func (c *client) ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*github.WorkflowRuns, *Response, error) {
+func (c *client) ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*WorkflowRuns, *Response, error) {
 	return c.ghc.Actions.ListRepositoryWorkflowRuns(ctx, owner, repo, opts)
 }

@@ -82,7 +82,7 @@ Lookup failures stay fail-open. Merge Gatekeeper will continue counting the chec
 
 ### Using Importer
 
-You can also use the latest spec by using Importer to improt directly from the sample setup in this repository.
+You can also use the latest spec by using Importer to import directly from the sample setup in this repository.
 
 Create a YAML file with just a single Importer Marker:
 

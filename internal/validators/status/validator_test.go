@@ -154,13 +154,14 @@ func TestName(t *testing.T) {
 
 func Test_statusValidator_Validate(t *testing.T) {
 	type test struct {
-		selfJobName string
-		ignoredJobs []string
-		client      github.Client
-		ctx         context.Context
-		wantErr     bool
-		wantErrStr  string
-		wantStatus  validators.Status
+		selfJobName                  string
+		ignoredJobs                  []string
+		ignoreDynamicGitHubWorkflows bool
+		client                       github.Client
+		ctx                          context.Context
+		wantErr                      bool
+		wantErrStr                   string
+		wantStatus                   validators.Status
 	}
 	tests := map[string]test{
 		"returns error when listGhaStatuses return an error": {
@@ -470,6 +471,7 @@ func Test_statusValidator_Validate(t *testing.T) {
 			},
 		},
 		"returns succeeded status when only dynamic workflow checks fail and ignoring is enabled": {
+			ignoreDynamicGitHubWorkflows: true,
 			client: &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
 					return &github.CombinedStatus{}, nil, nil
@@ -529,7 +531,7 @@ func Test_statusValidator_Validate(t *testing.T) {
 				repo:                         "test-repo",
 				selfJobName:                  tt.selfJobName,
 				ignoredJobs:                  tt.ignoredJobs,
-				ignoreDynamicGitHubWorkflows: name == "returns succeeded status when only dynamic workflow checks fail and ignoring is enabled",
+				ignoreDynamicGitHubWorkflows: tt.ignoreDynamicGitHubWorkflows,
 				client:                       tt.client,
 			}
 			got, err := sv.Validate(tt.ctx)
@@ -558,12 +560,13 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 		client      github.Client
 	}
 	type test struct {
-		fields                  fields
-		ctx                     context.Context
-		wantErr                 bool
-		want                    []*ghaStatus
-		workflowLookupCalls     *int
-		wantWorkflowLookupCalls int
+		fields                       fields
+		ignoreDynamicGitHubWorkflows bool
+		ctx                          context.Context
+		wantErr                      bool
+		want                         []*ghaStatus
+		workflowLookupCalls          *int
+		wantWorkflowLookupCalls      int
 	}
 	tests := map[string]test{
 		"succeeds to get job statuses even if the same job exists": func() test {
@@ -898,10 +901,11 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					repo:        "test-repo",
 					ref:         "main",
 				},
-				wantErr:                 false,
-				want:                    want,
-				workflowLookupCalls:     &lookupCalls,
-				wantWorkflowLookupCalls: 1,
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want:                         want,
+				workflowLookupCalls:          &lookupCalls,
+				wantWorkflowLookupCalls:      1,
 			}
 		}(),
 		"records failed workflow lookups while keeping the check run in scope": func() test {
@@ -934,7 +938,8 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					repo:        "test-repo",
 					ref:         "main",
 				},
-				wantErr: false,
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
 				want: []*ghaStatus{
 					{
 						Job:                 "Analyze (go)",
@@ -983,7 +988,8 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					repo:        "test-repo",
 					ref:         "main",
 				},
-				wantErr: false,
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
 				want: []*ghaStatus{
 					{
 						Job:   "test (ubuntu-latest, go1.23)",
@@ -1185,7 +1191,7 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				owner:                        tt.fields.owner,
 				ref:                          tt.fields.ref,
 				selfJobName:                  tt.fields.selfJobName,
-				ignoreDynamicGitHubWorkflows: name == "marks dynamic workflow check runs for ignoring and reuses the workflow lookup cache" || name == "records failed workflow lookups while keeping the check run in scope" || name == "does not ignore check runs from repository workflows",
+				ignoreDynamicGitHubWorkflows: tt.ignoreDynamicGitHubWorkflows,
 				client:                       tt.fields.client,
 			}
 			got, err := sv.listGhaStatuses(tt.ctx)
@@ -1202,9 +1208,6 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 			}
 			if tt.workflowLookupCalls != nil && *tt.workflowLookupCalls != tt.wantWorkflowLookupCalls {
 				t.Errorf("statusValidator.listStatuses() workflow lookup calls = %d, want %d", *tt.workflowLookupCalls, tt.wantWorkflowLookupCalls)
-			}
-			if tt.wantWorkflowLookupCalls > 0 && len(sv.workflowRunByCheckSuiteCache) != tt.wantWorkflowLookupCalls {
-				t.Errorf("statusValidator.listStatuses() workflow run cache entries = %d, want %d", len(sv.workflowRunByCheckSuiteCache), tt.wantWorkflowLookupCalls)
 			}
 		})
 	}
