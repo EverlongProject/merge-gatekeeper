@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"league.dev/merge-gatekeeper/internal/github"
@@ -74,17 +75,32 @@ func TestCreateValidator(t *testing.T) {
 				WithGitHubRef("sha-01"),
 				WithSelfJob("job"),
 				WithSelfJob("job-01"),
-				WithIgnoredJobs(","), // Malformed but handled
+				WithIgnoredJobs(","),
 			},
-			want: &statusValidator{
-				client:      &mock.Client{},
-				owner:       "test",
-				repo:        "test-repo",
-				ref:         "sha-01",
-				selfJobName: "job-01",
-				ignoredJobs: []string{}, // Not nil
+			want:    nil,
+			wantErr: true,
+		},
+		"returns error when ignored jobs contains an empty item": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("job-01"),
+				WithIgnoredJobs("job-01,,job-03"),
 			},
-			wantErr: false,
+			want:    nil,
+			wantErr: true,
+		},
+		"returns error listing all empty ignored job entries": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("job-01"),
+				WithIgnoredJobs(",job-01,,job-03,"),
+			},
+			want:    nil,
+			wantErr: true,
 		},
 		"returns error when option is empty": {
 			c:       &mock.Client{},
@@ -110,6 +126,17 @@ func TestCreateValidator(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateValidator error = %v, wantErr: %v", err, tt.wantErr)
 				return
+			}
+			if name == "returns error listing all empty ignored job entries" {
+				for _, expected := range []string{
+					"ignored jobs contains empty entry at position 1",
+					"ignored jobs contains empty entry at position 3",
+					"ignored jobs contains empty entry at position 5",
+				} {
+					if err == nil || !strings.Contains(err.Error(), expected) {
+						t.Fatalf("CreateValidator() error = %v, want substring %q", err, expected)
+					}
+				}
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateValidator() = %v, want %v", got, tt.want)

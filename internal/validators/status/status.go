@@ -76,7 +76,6 @@ Ignored job count:     %d
 }
 
 func (s *status) IsSuccess() bool {
-	// TDOO: Add test case
 	return s.succeeded
 }
 

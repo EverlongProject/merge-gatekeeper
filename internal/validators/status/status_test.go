@@ -151,3 +151,27 @@ Ignored job count:     0
 		})
 	}
 }
+
+func Test_status_IsSuccess(t *testing.T) {
+	tests := map[string]struct {
+		s    *status
+		want bool
+	}{
+		"returns true when status succeeded": {
+			s:    &status{succeeded: true},
+			want: true,
+		},
+		"returns false when status did not succeed": {
+			s:    &status{succeeded: false},
+			want: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := tt.s.IsSuccess(); got != tt.want {
+				t.Errorf("status.IsSuccess() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

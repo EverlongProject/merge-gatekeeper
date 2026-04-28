@@ -46,6 +46,6 @@ We are currently considering additional validation controls such as:
 
 Merge Gatekeeper periodically validates the PR status by hitting GitHub API. The GitHub token is thus required for Merge Gatekeeper to operate, and it's often enough to have `${{ secrets.GITHUB_TOKEN }}` to be provided. The API call to list PR jobs will reveal how many jobs need to run for the given PR, check each job status, and finally return the validation status - success based on completing all the jobs, or timeout error. It is important for Merge Gatekeeper to know the Job name of itself, so that when API call returns Merge Gatekeeper as a part of the PR jobs, it would ignore its status (otherwise it will never succeed). When `success-confirmation-polls` is set, Merge Gatekeeper keeps polling after the first successful pass and only exits after the configured number of additional consecutive successful polls.
 
-<!-- TODO: Add more about other validation types when we add support -->
+Additional validation types are not implemented yet, so this document currently focuses on status-based validation only.
 
 <!-- == implementation-details: support / end == -->
