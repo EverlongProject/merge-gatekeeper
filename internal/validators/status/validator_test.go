@@ -61,11 +61,12 @@ func TestCreateValidator(t *testing.T) {
 				WithSelfJob("job-01"),
 			},
 			want: &statusValidator{
-				client:      &mock.Client{},
-				owner:       "test",
-				repo:        "test-repo",
-				ref:         "sha-01",
-				selfJobName: "job-01",
+				client:                       &mock.Client{},
+				owner:                        "test",
+				repo:                         "test-repo",
+				ref:                          "sha-01",
+				selfJobName:                  "job-01",
+				ignoreDynamicGitHubWorkflows: true,
 			},
 			wantErr: false,
 		},
@@ -80,12 +81,13 @@ func TestCreateValidator(t *testing.T) {
 				WithIgnoredJobs(","), // Malformed but handled
 			},
 			want: &statusValidator{
-				client:      &mock.Client{},
-				owner:       "test",
-				repo:        "test-repo",
-				ref:         "sha-01",
-				selfJobName: "job-01",
-				ignoredJobs: []string{}, // Not nil
+				client:                       &mock.Client{},
+				owner:                        "test",
+				repo:                         "test-repo",
+				ref:                          "sha-01",
+				selfJobName:                  "job-01",
+				ignoredJobs:                  []string{}, // Not nil
+				ignoreDynamicGitHubWorkflows: true,
 			},
 			wantErr: false,
 		},

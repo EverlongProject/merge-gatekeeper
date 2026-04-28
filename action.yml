@@ -26,7 +26,7 @@ inputs:
   ignore-dynamic-github-workflows:
     description: "ignore check runs whose backing GitHub workflow path starts with dynamic/"
     required: false
-    default: "false"
+    default: "true"
   success-confirmation-polls:
     description: "set additional successful polls required after first green"
     required: false

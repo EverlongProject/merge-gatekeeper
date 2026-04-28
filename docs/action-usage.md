@@ -12,7 +12,7 @@
 | `timeout`  | Timeout setup to give up further check. Default is set to 600 (sec).                                                                                                                                                                                                                                 |          |
 | `success-confirmation-polls` | Number of additional consecutive successful polls required after Merge Gatekeeper first sees all validations as green. `0` keeps the current behavior.                                                                                                                                      |          |
 | `ignored`  | Jobs to ignore regardless of their statuses. Defined as a comma-separated list.                                                                                                                                                                                                                      |          |
-| `ignore-dynamic-github-workflows` | Ignore check runs whose backing workflow run resolves to a GitHub-managed workflow path under `dynamic/`. This is useful for GitHub-generated workflows such as CodeQL or Copilot review jobs that are not declared in the repository itself. |          |
+| `ignore-dynamic-github-workflows` | Ignore check runs whose backing workflow run resolves to a GitHub-managed workflow path under `dynamic/`. This is useful for GitHub-generated workflows such as CodeQL or Copilot review jobs that are not declared in the repository itself. Defaults to `true`; set it to `false` to keep those checks in scope. |          |
 | `ref`      | Git ref to check out. This falls back to the HEAD for given PR, but can be set to any ref.                                                                                                                                                                                                           |          |
 
 <!-- == export: inputs / end == -->
@@ -76,7 +76,7 @@ Use `success-confirmation-polls` to require additional consecutive successful po
 
 ### Ignoring GitHub-Managed Dynamic Workflows
 
-Some checks are created by GitHub itself rather than by workflows committed in the repository. When Merge Gatekeeper resolves a check run back to a workflow run whose path starts with `dynamic/`, setting `ignore-dynamic-github-workflows: true` will exclude that check from merge evaluation.
+Some checks are created by GitHub itself rather than by workflows committed in the repository. Merge Gatekeeper ignores those checks by default when it resolves a check run back to a workflow run whose path starts with `dynamic/`. Set `ignore-dynamic-github-workflows: false` if you need to keep them in merge evaluation.
 
 Lookup failures stay fail-open. Merge Gatekeeper will continue counting the check normally, and the action output will include a `gh api` command you can run to inspect the workflow lookup path directly.
 

@@ -58,7 +58,8 @@ type statusValidator struct {
 
 func CreateValidator(c github.Client, opts ...Option) (validators.Validator, error) {
 	sv := &statusValidator{
-		client: c,
+		client:                       c,
+		ignoreDynamicGitHubWorkflows: true,
 	}
 	for _, opt := range opts {
 		opt(sv)
