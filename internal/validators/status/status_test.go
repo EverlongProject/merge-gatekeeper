@@ -30,6 +30,8 @@ Completed job count:   1
 Incompleted job count: 1
 Failed job count:      1
 Ignored job count:     0
+Ignored dynamic workflow check count: 0
+Failed lookup count:   0
 
 ::group::Failed jobs
 - job-3
@@ -44,6 +46,14 @@ Ignored job count:     0
 ::endgroup::
 
 ::group::Ignored jobs
+[]
+::endgroup::
+
+::group::Ignored dynamic workflows
+[]
+::endgroup::
+
+::group::Check runs with failed lookups
 []
 ::endgroup::
 
@@ -80,6 +90,8 @@ Completed job count:   2
 Incompleted job count: 1
 Failed job count:      1
 Ignored job count:     1
+Ignored dynamic workflow check count: 0
+Failed lookup count:   0
 
 ::group::Failed jobs
 - job-3
@@ -96,6 +108,14 @@ Ignored job count:     1
 
 ::group::Ignored jobs
 - job-4
+::endgroup::
+
+::group::Ignored dynamic workflows
+[]
+::endgroup::
+
+::group::Check runs with failed lookups
+[]
 ::endgroup::
 
 ::group::All jobs
@@ -118,6 +138,8 @@ Completed job count:   0
 Incompleted job count: 0
 Failed job count:      0
 Ignored job count:     0
+Ignored dynamic workflow check count: 0
+Failed lookup count:   0
 
 ::group::Failed jobs
 []
@@ -135,8 +157,74 @@ Ignored job count:     0
 []
 ::endgroup::
 
+::group::Ignored dynamic workflows
+[]
+::endgroup::
+
+::group::Check runs with failed lookups
+[]
+::endgroup::
+
 ::group::All jobs
 []
+::endgroup::
+`,
+		},
+		"return detail with dynamic workflow groups and failed lookups": {
+			s: &status{
+				totalJobs:    []string{"job-1", "job-2"},
+				completeJobs: []string{"job-2"},
+				ignoredDynamicWorkflows: []ignoredDynamicWorkflowGroup{
+					{
+						WorkflowName: "Copilot code review",
+						WorkflowPath: "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer",
+						Jobs:         []string{"Cleanup artifacts", "Agent"},
+					},
+				},
+				failedLookupChecks: []failedLookupCheck{
+					{
+						Job:     "Analyze (go)",
+						Command: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+				},
+			},
+			want: `1 out of 2
+
+Total job count:       2
+Completed job count:   1
+Incompleted job count: 1
+Failed job count:      0
+Ignored job count:     0
+Ignored dynamic workflow check count: 2
+Failed lookup count:   1
+
+::group::Failed jobs
+[]
+::endgroup::
+
+::group::Completed jobs
+- job-2
+::endgroup::
+
+::group::Incomplete jobs
+- job-1
+::endgroup::
+
+::group::Ignored jobs
+[]
+::endgroup::
+
+::group::Ignored dynamic workflows
+- Copilot code review (dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer): Agent, Cleanup artifacts
+::endgroup::
+
+::group::Check runs with failed lookups
+- Analyze (go) -> gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456
+::endgroup::
+
+::group::All jobs
+- job-1
+- job-2
 ::endgroup::
 `,
 		},
