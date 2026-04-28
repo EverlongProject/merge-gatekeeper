@@ -218,9 +218,12 @@ func (sv *statusValidator) listCheckRunsForRef(ctx context.Context) ([]*github.C
 	return runResults, nil
 }
 
-func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, checkSuiteID int64, cache map[int64]*github.WorkflowRun) (*github.WorkflowRun, error) {
+func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, checkSuiteID int64, cache map[int64]*github.WorkflowRun, misses map[int64]struct{}) (*github.WorkflowRun, error) {
 	if cached, ok := cache[checkSuiteID]; ok {
 		return cached, nil
+	}
+	if _, ok := misses[checkSuiteID]; ok {
+		return nil, nil
 	}
 
 	runs, _, err := sv.client.ListRepositoryWorkflowRuns(ctx, sv.owner, sv.repo, &github.ListWorkflowRunsOptions{
@@ -234,6 +237,7 @@ func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, chec
 		return nil, err
 	}
 	if runs == nil || len(runs.WorkflowRuns) == 0 {
+		misses[checkSuiteID] = struct{}{}
 		return nil, nil
 	}
 
@@ -287,6 +291,7 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 	}
 
 	workflowRunByCheckSuiteCache := make(map[int64]*github.WorkflowRun)
+	workflowRunByCheckSuiteMisses := make(map[int64]struct{})
 
 	for _, run := range runResults {
 		if run.Name == nil || run.Status == nil {
@@ -304,7 +309,7 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 		if sv.shouldLookupWorkflowPath(run) {
 			if run.CheckSuite != nil && run.CheckSuite.ID != nil {
 				checkSuiteID := *run.CheckSuite.ID
-				workflowRun, lookupErr := sv.getWorkflowRunForCheckSuite(ctx, checkSuiteID, workflowRunByCheckSuiteCache)
+				workflowRun, lookupErr := sv.getWorkflowRunForCheckSuite(ctx, checkSuiteID, workflowRunByCheckSuiteCache, workflowRunByCheckSuiteMisses)
 				if lookupErr != nil || workflowRun == nil || workflowRun.Path == nil || len(*workflowRun.Path) == 0 {
 					ghaStatus.FailedLookupCommand = sv.getWorkflowLookupCommand(checkSuiteID)
 				} else if strings.HasPrefix(*workflowRun.Path, "dynamic/") {

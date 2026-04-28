@@ -1002,6 +1002,63 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				wantWorkflowLookupCalls: 1,
 			}
 		}(),
+		"caches empty workflow run lookups within a single poll": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("CodeQL / Analyze (go)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/21"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+							},
+							{
+								Name:       stringPtr("CodeQL / Analyze (javascript)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/22"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want: []*ghaStatus{
+					{
+						Job:                 "CodeQL / Analyze (go)",
+						State:               successState,
+						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+					{
+						Job:                 "CodeQL / Analyze (javascript)",
+						State:               successState,
+						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+				},
+				workflowLookupCalls:     &lookupCalls,
+				wantWorkflowLookupCalls: 1,
+			}
+		}(),
 		"succeeds to retrieve 100 statuses": func() test {
 			num_statuses := 100
 			statuses := make([]*github.RepoStatus, num_statuses)
