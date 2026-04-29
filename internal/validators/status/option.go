@@ -50,3 +50,9 @@ func WithIgnoredJobs(names string) Option {
 		s.ignoredJobs = jobs
 	}
 }
+
+func WithIgnoreDynamicGitHubWorkflows(ignore bool) Option {
+	return func(s *statusValidator) {
+		s.ignoreDynamicGitHubWorkflows = ignore
+	}
+}
