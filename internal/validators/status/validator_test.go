@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	ghapi "github.com/google/go-github/v69/github"
 	"league.dev/merge-gatekeeper/internal/github"
 	"league.dev/merge-gatekeeper/internal/github/mock"
 	"league.dev/merge-gatekeeper/internal/validators"
@@ -38,14 +39,16 @@ func TestCreateValidator(t *testing.T) {
 				WithGitHubRef("sha"),
 				WithSelfJob("job"),
 				WithIgnoredJobs("job-01,job-02"),
+				WithIgnoreDynamicGitHubWorkflows(true),
 			},
 			want: &statusValidator{
-				client:      &mock.Client{},
-				owner:       "test-owner",
-				repo:        "test-repo",
-				ref:         "sha",
-				selfJobName: "job",
-				ignoredJobs: []string{"job-01", "job-02"},
+				client:                       &mock.Client{},
+				owner:                        "test-owner",
+				repo:                         "test-repo",
+				ref:                          "sha",
+				selfJobName:                  "job",
+				ignoredJobs:                  []string{"job-01", "job-02"},
+				ignoreDynamicGitHubWorkflows: true,
 			},
 			wantErr: false,
 		},
@@ -59,11 +62,12 @@ func TestCreateValidator(t *testing.T) {
 				WithSelfJob("job-01"),
 			},
 			want: &statusValidator{
-				client:      &mock.Client{},
-				owner:       "test",
-				repo:        "test-repo",
-				ref:         "sha-01",
-				selfJobName: "job-01",
+				client:                       &mock.Client{},
+				owner:                        "test",
+				repo:                         "test-repo",
+				ref:                          "sha-01",
+				selfJobName:                  "job-01",
+				ignoreDynamicGitHubWorkflows: true,
 			},
 			wantErr: false,
 		},
@@ -178,13 +182,14 @@ func TestName(t *testing.T) {
 
 func Test_statusValidator_Validate(t *testing.T) {
 	type test struct {
-		selfJobName string
-		ignoredJobs []string
-		client      github.Client
-		ctx         context.Context
-		wantErr     bool
-		wantErrStr  string
-		wantStatus  validators.Status
+		selfJobName                  string
+		ignoredJobs                  []string
+		ignoreDynamicGitHubWorkflows bool
+		client                       github.Client
+		ctx                          context.Context
+		wantErr                      bool
+		wantErrStr                   string
+		wantStatus                   validators.Status
 	}
 	tests := map[string]test{
 		"returns error when listGhaStatuses return an error": {
@@ -493,13 +498,69 @@ func Test_statusValidator_Validate(t *testing.T) {
 				ignoredJobs:  []string{"job-02", "job-03"},
 			},
 		},
+		"returns succeeded status when only dynamic workflow checks fail and ignoring is enabled": {
+			ignoreDynamicGitHubWorkflows: true,
+			client: &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("Agent"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr("failure"),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/2"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+							},
+							{
+								Name:       stringPtr("Cleanup artifacts"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr("failure"),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/3"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					return &github.WorkflowRuns{
+						WorkflowRuns: []*github.WorkflowRun{
+							{
+								Name: stringPtr("Copilot code review"),
+								Path: stringPtr("dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer"),
+							},
+						},
+					}, nil, nil
+				},
+			},
+			wantErr: false,
+			wantStatus: &status{
+				succeeded:    true,
+				totalJobs:    []string{},
+				completeJobs: []string{},
+				ignoredJobs:  []string{},
+				errJobs:      []string{},
+				ignoredDynamicWorkflows: []ignoredDynamicWorkflowGroup{
+					{
+						WorkflowName: "Copilot code review",
+						WorkflowPath: "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer",
+						Jobs:         []string{"Agent", "Cleanup artifacts"},
+					},
+				},
+			},
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			sv := &statusValidator{
-				selfJobName: tt.selfJobName,
-				ignoredJobs: tt.ignoredJobs,
-				client:      tt.client,
+				owner:                        "test-owner",
+				repo:                         "test-repo",
+				selfJobName:                  tt.selfJobName,
+				ignoredJobs:                  tt.ignoredJobs,
+				ignoreDynamicGitHubWorkflows: tt.ignoreDynamicGitHubWorkflows,
+				client:                       tt.client,
 			}
 			got, err := sv.Validate(tt.ctx)
 			if (err != nil) != tt.wantErr {
@@ -527,10 +588,13 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 		client      github.Client
 	}
 	type test struct {
-		fields  fields
-		ctx     context.Context
-		wantErr bool
-		want    []*ghaStatus
+		fields                       fields
+		ignoreDynamicGitHubWorkflows bool
+		ctx                          context.Context
+		wantErr                      bool
+		want                         []*ghaStatus
+		workflowLookupCalls          *int
+		wantWorkflowLookupCalls      int
 	}
 	tests := map[string]test{
 		"succeeds to get job statuses even if the same job exists": func() test {
@@ -805,6 +869,222 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				},
 			}
 		}(),
+		"marks dynamic workflow check runs for ignoring and reuses the workflow lookup cache": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("Agent"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr("failure"),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/2"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+							},
+							{
+								Name:       stringPtr("Cleanup artifacts"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr("failure"),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/3"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{
+						WorkflowRuns: []*github.WorkflowRun{
+							{
+								Name: stringPtr("Copilot code review"),
+								Path: stringPtr("dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer"),
+							},
+						},
+					}, nil, nil
+				},
+			}
+			want := []*ghaStatus{
+				{
+					Job:                        "Agent",
+					State:                      errorState,
+					IgnoredDynamicWorkflowName: "Copilot code review",
+					IgnoredDynamicWorkflowPath: "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer",
+				},
+				{
+					Job:                        "Cleanup artifacts",
+					State:                      errorState,
+					IgnoredDynamicWorkflowName: "Copilot code review",
+					IgnoredDynamicWorkflowPath: "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer",
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want:                         want,
+				workflowLookupCalls:          &lookupCalls,
+				wantWorkflowLookupCalls:      1,
+			}
+		}(),
+		"records failed workflow lookups while keeping the check run in scope": func() test {
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("Analyze (go)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/9/job/2"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					return nil, nil, errors.New("lookup failed")
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want: []*ghaStatus{
+					{
+						Job:                 "Analyze (go)",
+						State:               successState,
+						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+				},
+			}
+		}(),
+		"does not ignore check runs from repository workflows": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("test (ubuntu-latest, go1.23)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/11/job/22"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(789)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{
+						WorkflowRuns: []*github.WorkflowRun{
+							{
+								Name: stringPtr("CI"),
+								Path: stringPtr(".github/workflows/ci.yml"),
+							},
+						},
+					}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want: []*ghaStatus{
+					{
+						Job:   "test (ubuntu-latest, go1.23)",
+						State: successState,
+					},
+				},
+				workflowLookupCalls:     &lookupCalls,
+				wantWorkflowLookupCalls: 1,
+			}
+		}(),
+		"caches empty workflow run lookups within a single poll": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("CodeQL / Analyze (go)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/21"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+							},
+							{
+								Name:       stringPtr("CodeQL / Analyze (javascript)"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/22"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want: []*ghaStatus{
+					{
+						Job:                 "CodeQL / Analyze (go)",
+						State:               successState,
+						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+					{
+						Job:                 "CodeQL / Analyze (javascript)",
+						State:               successState,
+						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+					},
+				},
+				workflowLookupCalls:     &lookupCalls,
+				wantWorkflowLookupCalls: 1,
+			}
+		}(),
 		"succeeds to retrieve 100 statuses": func() test {
 			num_statuses := 100
 			statuses := make([]*github.RepoStatus, num_statuses)
@@ -992,11 +1272,12 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			sv := &statusValidator{
-				repo:        tt.fields.repo,
-				owner:       tt.fields.owner,
-				ref:         tt.fields.ref,
-				selfJobName: tt.fields.selfJobName,
-				client:      tt.fields.client,
+				repo:                         tt.fields.repo,
+				owner:                        tt.fields.owner,
+				ref:                          tt.fields.ref,
+				selfJobName:                  tt.fields.selfJobName,
+				ignoreDynamicGitHubWorkflows: tt.ignoreDynamicGitHubWorkflows,
+				client:                       tt.fields.client,
 			}
 			got, err := sv.listGhaStatuses(tt.ctx)
 			if (err != nil) != tt.wantErr {
@@ -1009,6 +1290,9 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				if !reflect.DeepEqual(got[i], tt.want[i]) {
 					t.Errorf("statusValidator.listStatuses() - %d = %v, want %v", i, got[i], tt.want[i])
 				}
+			}
+			if tt.workflowLookupCalls != nil && *tt.workflowLookupCalls != tt.wantWorkflowLookupCalls {
+				t.Errorf("statusValidator.listStatuses() workflow lookup calls = %d, want %d", *tt.workflowLookupCalls, tt.wantWorkflowLookupCalls)
 			}
 		})
 	}

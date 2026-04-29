@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"league.dev/merge-gatekeeper/internal/github"
 	"league.dev/merge-gatekeeper/internal/multierror"
@@ -38,23 +39,28 @@ var (
 )
 
 type ghaStatus struct {
-	Job   string
-	State string
+	Job                        string
+	State                      string
+	IgnoredDynamicWorkflowName string
+	IgnoredDynamicWorkflowPath string
+	FailedLookupCommand        string
 }
 
 type statusValidator struct {
-	repo        string
-	owner       string
-	ref         string
-	selfJobName string
-	ignoredJobs []string
-	optionErrs  multierror.Errors
-	client      github.Client
+	repo                         string
+	owner                        string
+	ref                          string
+	selfJobName                  string
+	ignoredJobs                  []string
+	ignoreDynamicGitHubWorkflows bool
+	optionErrs                   multierror.Errors
+	client                       github.Client
 }
 
 func CreateValidator(c github.Client, opts ...Option) (validators.Validator, error) {
 	sv := &statusValidator{
-		client: c,
+		client:                       c,
+		ignoreDynamicGitHubWorkflows: true,
 	}
 	for _, opt := range opts {
 		opt(sv)
@@ -114,6 +120,12 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 
 	var successCnt int
 	for _, ghaStatus := range ghaStatuses {
+		if ghaStatus.IgnoredDynamicWorkflowPath != "" {
+			successCnt++
+			st.addIgnoredDynamicWorkflow(ghaStatus.IgnoredDynamicWorkflowName, ghaStatus.IgnoredDynamicWorkflowPath, ghaStatus.Job)
+			continue
+		}
+
 		var toIgnore bool
 		for _, ignored := range sv.ignoredJobs {
 			if ghaStatus.Job == ignored {
@@ -129,6 +141,12 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 		}
 
 		st.totalJobs = append(st.totalJobs, ghaStatus.Job)
+		if ghaStatus.FailedLookupCommand != "" {
+			st.failedLookupChecks = append(st.failedLookupChecks, failedLookupCheck{
+				Job:     ghaStatus.Job,
+				Command: ghaStatus.FailedLookupCommand,
+			})
+		}
 
 		switch ghaStatus.State {
 		case successState:
@@ -148,6 +166,21 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 	}
 
 	return st, nil
+}
+
+func (s *status) addIgnoredDynamicWorkflow(workflowName, workflowPath, job string) {
+	for index, workflow := range s.ignoredDynamicWorkflows {
+		if workflow.WorkflowName == workflowName && workflow.WorkflowPath == workflowPath {
+			s.ignoredDynamicWorkflows[index].Jobs = append(s.ignoredDynamicWorkflows[index].Jobs, job)
+			return
+		}
+	}
+
+	s.ignoredDynamicWorkflows = append(s.ignoredDynamicWorkflows, ignoredDynamicWorkflowGroup{
+		WorkflowName: workflowName,
+		WorkflowPath: workflowPath,
+		Jobs:         []string{job},
+	})
 }
 
 func (sv *statusValidator) getCombinedStatus(ctx context.Context) ([]*github.RepoStatus, error) {
@@ -187,6 +220,47 @@ func (sv *statusValidator) listCheckRunsForRef(ctx context.Context) ([]*github.C
 	return runResults, nil
 }
 
+func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, checkSuiteID int64, cache map[int64]*github.WorkflowRun, misses map[int64]struct{}) (*github.WorkflowRun, error) {
+	if cached, ok := cache[checkSuiteID]; ok {
+		return cached, nil
+	}
+	if _, ok := misses[checkSuiteID]; ok {
+		return nil, nil
+	}
+
+	runs, _, err := sv.client.ListRepositoryWorkflowRuns(ctx, sv.owner, sv.repo, &github.ListWorkflowRunsOptions{
+		CheckSuiteID: checkSuiteID,
+		ListOptions: github.ListOptions{
+			PerPage: 1,
+			Page:    1,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if runs == nil || len(runs.WorkflowRuns) == 0 {
+		misses[checkSuiteID] = struct{}{}
+		return nil, nil
+	}
+
+	run := runs.WorkflowRuns[0]
+	cache[checkSuiteID] = run
+	return run, nil
+}
+
+func (sv *statusValidator) shouldLookupWorkflowPath(run *github.CheckRun) bool {
+	if !sv.ignoreDynamicGitHubWorkflows || run.DetailsURL == nil {
+		return false
+	}
+
+	detailsURL := *run.DetailsURL
+	return strings.Contains(detailsURL, "github.com/") && (strings.Contains(detailsURL, "/actions/") || strings.Contains(detailsURL, "/runs/"))
+}
+
+func (sv *statusValidator) getWorkflowLookupCommand(checkSuiteID int64) string {
+	return fmt.Sprintf("gh api repos/%s/%s/actions/runs -F check_suite_id=%d", sv.owner, sv.repo, checkSuiteID)
+}
+
 func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, error) {
 	combined, err := sv.getCombinedStatus(ctx)
 	if err != nil {
@@ -218,6 +292,9 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 		return nil, err
 	}
 
+	workflowRunByCheckSuiteCache := make(map[int64]*github.WorkflowRun)
+	workflowRunByCheckSuiteMisses := make(map[int64]struct{})
+
 	for _, run := range runResults {
 		if run.Name == nil || run.Status == nil {
 			return nil, fmt.Errorf("%w name: %v, status: %v", ErrInvalidCheckRunResponse, run.Name, run.Status)
@@ -229,6 +306,23 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 
 		ghaStatus := &ghaStatus{
 			Job: *run.Name,
+		}
+
+		if sv.shouldLookupWorkflowPath(run) {
+			if run.CheckSuite != nil && run.CheckSuite.ID != nil {
+				checkSuiteID := *run.CheckSuite.ID
+				workflowRun, lookupErr := sv.getWorkflowRunForCheckSuite(ctx, checkSuiteID, workflowRunByCheckSuiteCache, workflowRunByCheckSuiteMisses)
+				if lookupErr != nil || workflowRun == nil || workflowRun.Path == nil || len(*workflowRun.Path) == 0 {
+					ghaStatus.FailedLookupCommand = sv.getWorkflowLookupCommand(checkSuiteID)
+				} else if strings.HasPrefix(*workflowRun.Path, "dynamic/") {
+					workflowName := *workflowRun.Path
+					if workflowRun.Name != nil && len(*workflowRun.Name) != 0 {
+						workflowName = *workflowRun.Name
+					}
+					ghaStatus.IgnoredDynamicWorkflowName = workflowName
+					ghaStatus.IgnoredDynamicWorkflowPath = *workflowRun.Path
+				}
+			}
 		}
 
 		if *run.Status != checkRunCompletedStatus {

@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v69/github"
 	"golang.org/x/oauth2"
 )
 
@@ -15,14 +15,18 @@ type (
 )
 
 type (
-	CheckRun             = github.CheckRun
-	ListCheckRunsOptions = github.ListCheckRunsOptions
-	ListCheckRunsResults = github.ListCheckRunsResults
+	CheckRun                = github.CheckRun
+	ListCheckRunsOptions    = github.ListCheckRunsOptions
+	ListCheckRunsResults    = github.ListCheckRunsResults
+	WorkflowRun             = github.WorkflowRun
+	WorkflowRuns            = github.WorkflowRuns
+	ListWorkflowRunsOptions = github.ListWorkflowRunsOptions
 )
 
 type Client interface {
 	GetCombinedStatus(ctx context.Context, owner, repo, ref string, opts *ListOptions) (*CombinedStatus, *Response, error)
 	ListCheckRunsForRef(ctx context.Context, owner, repo, ref string, opts *ListCheckRunsOptions) (*ListCheckRunsResults, *Response, error)
+	ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*WorkflowRuns, *Response, error)
 }
 
 type client struct {
@@ -45,4 +49,8 @@ func (c *client) GetCombinedStatus(ctx context.Context, owner, repo, ref string,
 
 func (c *client) ListCheckRunsForRef(ctx context.Context, owner, repo, ref string, opts *ListCheckRunsOptions) (*ListCheckRunsResults, *Response, error) {
 	return c.ghc.Checks.ListCheckRunsForRef(ctx, owner, repo, ref, opts)
+}
+
+func (c *client) ListRepositoryWorkflowRuns(ctx context.Context, owner, repo string, opts *ListWorkflowRunsOptions) (*WorkflowRuns, *Response, error) {
+	return c.ghc.Actions.ListRepositoryWorkflowRuns(ctx, owner, repo, opts)
 }
