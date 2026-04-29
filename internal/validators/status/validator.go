@@ -259,7 +259,7 @@ func (sv *statusValidator) shouldLookupWorkflowPath(run *github.CheckRun) bool {
 }
 
 func (sv *statusValidator) getWorkflowLookupCommand(checkSuiteID int64) string {
-	return fmt.Sprintf("gh api repos/%s/%s/actions/runs -F check_suite_id=%d", sv.owner, sv.repo, checkSuiteID)
+	return fmt.Sprintf("gh api --method GET repos/%s/%s/actions/runs -F check_suite_id=%d", sv.owner, sv.repo, checkSuiteID)
 }
 
 func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, error) {

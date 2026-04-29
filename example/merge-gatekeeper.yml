@@ -11,6 +11,7 @@ jobs:
   merge-gatekeeper:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       checks: read
       statuses: read
     steps:

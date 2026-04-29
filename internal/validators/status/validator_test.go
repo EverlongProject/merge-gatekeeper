@@ -1007,7 +1007,7 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					{
 						Job:                 "Analyze (go)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 				},
 			}
@@ -1108,12 +1108,12 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					{
 						Job:                 "CodeQL / Analyze (go)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 					{
 						Job:                 "CodeQL / Analyze (javascript)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 				},
 				workflowLookupCalls:     &lookupCalls,
