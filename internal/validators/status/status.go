@@ -159,7 +159,6 @@ func (s *status) formatFailedLookupChecks() string {
 }
 
 func (s *status) IsSuccess() bool {
-	// TODO: Add test case
 	return s.succeeded
 }
 

@@ -16,3 +16,4 @@
 
 # Built binary
 merge-gatekeeper
+tmp/*
