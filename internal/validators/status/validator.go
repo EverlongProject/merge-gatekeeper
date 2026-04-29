@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"league.dev/merge-gatekeeper/internal/github"
-	"league.dev/merge-gatekeeper/internal/multierror"
 	"league.dev/merge-gatekeeper/internal/validators"
 )
 
@@ -53,8 +52,8 @@ type statusValidator struct {
 	selfJobName                  string
 	ignoredJobs                  []string
 	ignoreDynamicGitHubWorkflows bool
-	optionErrs                   multierror.Errors
-	ignoredJobsErrs              multierror.Errors
+	optionErrs                   []error
+	ignoredJobsErrs              []error
 	client                       github.Client
 }
 
@@ -77,7 +76,7 @@ func (sv *statusValidator) Name() string {
 }
 
 func (sv *statusValidator) validateFields() error {
-	errs := make(multierror.Errors, 0, 7)
+	errs := make([]error, 0, 7)
 
 	if len(sv.repo) == 0 {
 		errs = append(errs, errors.New("repository name is empty"))
@@ -98,7 +97,7 @@ func (sv *statusValidator) validateFields() error {
 	errs = append(errs, sv.ignoredJobsErrs...)
 
 	if len(errs) != 0 {
-		return errs
+		return errors.Join(errs...)
 	}
 
 	return nil

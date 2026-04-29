@@ -3,8 +3,6 @@ package status
 import (
 	"fmt"
 	"strings"
-
-	"league.dev/merge-gatekeeper/internal/multierror"
 )
 
 type Option func(s *statusValidator)
@@ -43,7 +41,7 @@ func WithIgnoredJobs(names string) Option {
 		}
 
 		jobs := []string{}
-		errs := make(multierror.Errors, 0)
+		errs := make([]error, 0)
 		ss := strings.Split(names, ",")
 		for index, name := range ss {
 			jobName := strings.TrimSpace(name)
