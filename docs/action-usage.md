@@ -53,6 +53,7 @@ jobs:
     # Restrict permissions of the GITHUB_TOKEN.
     # Docs: https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs
     permissions:
+      actions: read
       checks: read
       statuses: read
     steps:
