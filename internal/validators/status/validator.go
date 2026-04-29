@@ -54,6 +54,7 @@ type statusValidator struct {
 	ignoredJobs                  []string
 	ignoreDynamicGitHubWorkflows bool
 	optionErrs                   multierror.Errors
+	ignoredJobsErrs              multierror.Errors
 	client                       github.Client
 }
 
@@ -94,6 +95,7 @@ func (sv *statusValidator) validateFields() error {
 		errs = append(errs, errors.New("github client is empty"))
 	}
 	errs = append(errs, sv.optionErrs...)
+	errs = append(errs, sv.ignoredJobsErrs...)
 
 	if len(errs) != 0 {
 		return errs

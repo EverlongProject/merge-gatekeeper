@@ -41,16 +41,18 @@ func WithIgnoredJobs(names string) Option {
 		}
 
 		jobs := []string{}
+		errs := make([]error, 0)
 		ss := strings.Split(names, ",")
 		for index, name := range ss {
 			jobName := strings.TrimSpace(name)
 			if len(jobName) == 0 {
-				s.optionErrs = append(s.optionErrs, fmt.Errorf("ignored jobs contains empty entry at position %d", index+1))
+				errs = append(errs, fmt.Errorf("ignored jobs contains empty entry at position %d", index+1))
 				continue
 			}
 			jobs = append(jobs, jobName)
 		}
-		if len(s.optionErrs) != 0 {
+		s.ignoredJobsErrs = errs
+		if len(errs) != 0 {
 			return
 		}
 		s.ignoredJobs = jobs

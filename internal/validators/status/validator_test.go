@@ -27,10 +27,11 @@ func min(a, b int) int {
 
 func TestCreateValidator(t *testing.T) {
 	tests := map[string]struct {
-		c       github.Client
-		opts    []Option
-		want    validators.Validator
-		wantErr bool
+		c                 github.Client
+		opts              []Option
+		want              validators.Validator
+		wantErr           bool
+		wantErrSubstrings []string
 	}{
 		"returns Validator when option is not empty": {
 			c: &mock.Client{},
@@ -103,8 +104,29 @@ func TestCreateValidator(t *testing.T) {
 				WithSelfJob("job-01"),
 				WithIgnoredJobs(",job-01,,job-03,"),
 			},
-			want:    nil,
-			wantErr: true,
+			want:              nil,
+			wantErr:           true,
+			wantErrSubstrings: []string{"ignored jobs contains empty entry at position 1", "ignored jobs contains empty entry at position 3", "ignored jobs contains empty entry at position 5"},
+		},
+		"returns Validator when later ignored jobs option overrides earlier invalid one": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test-owner", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("job"),
+				WithIgnoredJobs(","),
+				WithIgnoredJobs("job-03,job-04"),
+			},
+			want: &statusValidator{
+				client:                       &mock.Client{},
+				owner:                        "test-owner",
+				repo:                         "test-repo",
+				ref:                          "sha",
+				selfJobName:                  "job",
+				ignoredJobs:                  []string{"job-03", "job-04"},
+				ignoreDynamicGitHubWorkflows: true,
+			},
+			wantErr: false,
 		},
 		"returns error when option is empty": {
 			c:       &mock.Client{},
@@ -131,16 +153,29 @@ func TestCreateValidator(t *testing.T) {
 				t.Errorf("CreateValidator error = %v, wantErr: %v", err, tt.wantErr)
 				return
 			}
-			if name == "returns error listing all empty ignored job entries" {
-				for _, expected := range []string{
-					"ignored jobs contains empty entry at position 1",
-					"ignored jobs contains empty entry at position 3",
-					"ignored jobs contains empty entry at position 5",
-				} {
-					if err == nil || !strings.Contains(err.Error(), expected) {
-						t.Fatalf("CreateValidator() error = %v, want substring %q", err, expected)
-					}
+			for _, expected := range tt.wantErrSubstrings {
+				if err == nil || !strings.Contains(err.Error(), expected) {
+					t.Fatalf("CreateValidator() error = %v, want substring %q", err, expected)
 				}
+			}
+			if tt.want != nil {
+				gotValidator, ok := got.(*statusValidator)
+				if !ok {
+					t.Fatalf("CreateValidator() type = %T, want *statusValidator", got)
+				}
+				wantValidator := tt.want.(*statusValidator)
+				if gotValidator.owner != wantValidator.owner ||
+					gotValidator.repo != wantValidator.repo ||
+					gotValidator.ref != wantValidator.ref ||
+					gotValidator.selfJobName != wantValidator.selfJobName ||
+					!reflect.DeepEqual(gotValidator.ignoredJobs, wantValidator.ignoredJobs) ||
+					gotValidator.ignoreDynamicGitHubWorkflows != wantValidator.ignoreDynamicGitHubWorkflows ||
+					len(gotValidator.optionErrs) != 0 ||
+					len(gotValidator.ignoredJobsErrs) != 0 ||
+					gotValidator.client != tt.c {
+					t.Errorf("CreateValidator() = %v, want %v", gotValidator, wantValidator)
+				}
+				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateValidator() = %v, want %v", got, tt.want)
