@@ -184,7 +184,7 @@ Failed lookup count:   0
 				failedLookupChecks: []failedLookupCheck{
 					{
 						Job:     "Analyze (go)",
-						Command: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						Command: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 				},
 			},
@@ -219,7 +219,7 @@ Failed lookup count:   1
 ::endgroup::
 
 ::group::Check runs with failed lookups
-- Analyze (go) -> gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456
+- Analyze (go) -> gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456
 ::endgroup::
 
 ::group::All jobs

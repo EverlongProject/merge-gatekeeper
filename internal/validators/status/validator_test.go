@@ -1007,7 +1007,7 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					{
 						Job:                 "Analyze (go)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 				},
 			}
@@ -1063,6 +1063,51 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				wantWorkflowLookupCalls: 1,
 			}
 		}(),
+		"does not attempt workflow lookup for github advanced security checks": func() test {
+			lookupCalls := 0
+			c := &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{
+						CheckRuns: []*github.CheckRun{
+							{
+								Name:       stringPtr("CodeQL"),
+								Status:     stringPtr(checkRunCompletedStatus),
+								Conclusion: stringPtr(checkRunSuccessConclusion),
+								DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/21"),
+								CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(456)},
+								App:        &ghapi.App{Slug: ghapi.String(githubAdvancedSecurityAppSlug)},
+							},
+						},
+					}, nil, nil
+				},
+				ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+					lookupCalls++
+					return &github.WorkflowRuns{}, nil, nil
+				},
+			}
+			return test{
+				fields: fields{
+					client:      c,
+					selfJobName: "self-job",
+					owner:       "test-owner",
+					repo:        "test-repo",
+					ref:         "main",
+				},
+				ignoreDynamicGitHubWorkflows: true,
+				wantErr:                      false,
+				want: []*ghaStatus{
+					{
+						Job:   "CodeQL",
+						State: successState,
+					},
+				},
+				workflowLookupCalls:     &lookupCalls,
+				wantWorkflowLookupCalls: 0,
+			}
+		}(),
 		"caches empty workflow run lookups within a single poll": func() test {
 			lookupCalls := 0
 			c := &mock.Client{
@@ -1108,12 +1153,12 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 					{
 						Job:                 "CodeQL / Analyze (go)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 					{
 						Job:                 "CodeQL / Analyze (javascript)",
 						State:               successState,
-						FailedLookupCommand: "gh api repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
+						FailedLookupCommand: "gh api --method GET repos/test-owner/test-repo/actions/runs -F check_suite_id=456",
 					},
 				},
 				workflowLookupCalls:     &lookupCalls,
@@ -1330,5 +1375,75 @@ func Test_statusValidator_listStatuses(t *testing.T) {
 				t.Errorf("statusValidator.listStatuses() workflow lookup calls = %d, want %d", *tt.workflowLookupCalls, tt.wantWorkflowLookupCalls)
 			}
 		})
+	}
+}
+
+func Test_statusValidator_listStatuses_reuses_cached_dynamic_workflow_across_polls(t *testing.T) {
+	checkRunPoll := 0
+	lookupCalls := 0
+	c := &mock.Client{
+		GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+			return &github.CombinedStatus{}, nil, nil
+		},
+		ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+			checkRunPoll++
+			checkSuiteID := int64(123)
+			if checkRunPoll > 1 {
+				checkSuiteID = 456
+			}
+			return &github.ListCheckRunsResults{
+				CheckRuns: []*github.CheckRun{
+					{
+						Name:       stringPtr("Analyze (go)"),
+						Status:     stringPtr(checkRunCompletedStatus),
+						Conclusion: stringPtr(checkRunSuccessConclusion),
+						DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/19/job/21"),
+						CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(checkSuiteID)},
+					},
+				},
+			}, nil, nil
+		},
+		ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+			lookupCalls++
+			return &github.WorkflowRuns{
+				WorkflowRuns: []*github.WorkflowRun{
+					{
+						Name: stringPtr("PR #1"),
+						Path: stringPtr("dynamic/example/workflow"),
+					},
+				},
+			}, nil, nil
+		},
+	}
+
+	sv := &statusValidator{
+		repo:                         "test-repo",
+		owner:                        "test-owner",
+		ref:                          "main",
+		selfJobName:                  "self-job",
+		ignoreDynamicGitHubWorkflows: true,
+		client:                       c,
+	}
+
+	for poll := 0; poll < 2; poll++ {
+		got, err := sv.listGhaStatuses(context.Background())
+		if err != nil {
+			t.Fatalf("statusValidator.listStatuses() error = %v", err)
+		}
+		want := []*ghaStatus{
+			{
+				Job:                        "Analyze (go)",
+				State:                      successState,
+				IgnoredDynamicWorkflowName: "PR #1",
+				IgnoredDynamicWorkflowPath: "dynamic/example/workflow",
+			},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("statusValidator.listStatuses() poll %d = %v, want %v", poll+1, got, want)
+		}
+	}
+
+	if lookupCalls != 1 {
+		t.Fatalf("statusValidator.listStatuses() workflow lookup calls = %d, want 1", lookupCalls)
 	}
 }
