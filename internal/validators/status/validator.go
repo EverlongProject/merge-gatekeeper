@@ -56,6 +56,8 @@ type statusValidator struct {
 	ignoreDynamicGitHubWorkflows bool
 	optionErrs                   []error
 	ignoredJobsErrs              []error
+	workflowRunByCheckSuiteCache map[int64]*github.WorkflowRun
+	ignoredDynamicWorkflowByJob  map[string]ignoredDynamicWorkflowGroup
 	client                       github.Client
 }
 
@@ -223,8 +225,11 @@ func (sv *statusValidator) listCheckRunsForRef(ctx context.Context) ([]*github.C
 	return runResults, nil
 }
 
-func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, checkSuiteID int64, cache map[int64]*github.WorkflowRun, misses map[int64]struct{}) (*github.WorkflowRun, error) {
-	if cached, ok := cache[checkSuiteID]; ok {
+func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, checkSuiteID int64, misses map[int64]struct{}) (*github.WorkflowRun, error) {
+	if sv.workflowRunByCheckSuiteCache == nil {
+		sv.workflowRunByCheckSuiteCache = make(map[int64]*github.WorkflowRun)
+	}
+	if cached, ok := sv.workflowRunByCheckSuiteCache[checkSuiteID]; ok {
 		return cached, nil
 	}
 	if _, ok := misses[checkSuiteID]; ok {
@@ -247,7 +252,7 @@ func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, chec
 	}
 
 	run := runs.WorkflowRuns[0]
-	cache[checkSuiteID] = run
+	sv.workflowRunByCheckSuiteCache[checkSuiteID] = run
 	return run, nil
 }
 
@@ -298,8 +303,10 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 		return nil, err
 	}
 
-	workflowRunByCheckSuiteCache := make(map[int64]*github.WorkflowRun)
 	workflowRunByCheckSuiteMisses := make(map[int64]struct{})
+	if sv.ignoredDynamicWorkflowByJob == nil {
+		sv.ignoredDynamicWorkflowByJob = make(map[string]ignoredDynamicWorkflowGroup)
+	}
 
 	for _, run := range runResults {
 		if run.Name == nil || run.Status == nil {
@@ -313,11 +320,13 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 		ghaStatus := &ghaStatus{
 			Job: *run.Name,
 		}
-
-		if sv.shouldLookupWorkflowPath(run) {
+		if cachedGroup, ok := sv.ignoredDynamicWorkflowByJob[*run.Name]; ok {
+			ghaStatus.IgnoredDynamicWorkflowName = cachedGroup.WorkflowName
+			ghaStatus.IgnoredDynamicWorkflowPath = cachedGroup.WorkflowPath
+		} else if sv.shouldLookupWorkflowPath(run) {
 			if run.CheckSuite != nil && run.CheckSuite.ID != nil {
 				checkSuiteID := *run.CheckSuite.ID
-				workflowRun, lookupErr := sv.getWorkflowRunForCheckSuite(ctx, checkSuiteID, workflowRunByCheckSuiteCache, workflowRunByCheckSuiteMisses)
+				workflowRun, lookupErr := sv.getWorkflowRunForCheckSuite(ctx, checkSuiteID, workflowRunByCheckSuiteMisses)
 				if lookupErr != nil || workflowRun == nil || workflowRun.Path == nil || len(*workflowRun.Path) == 0 {
 					ghaStatus.FailedLookupCommand = sv.getWorkflowLookupCommand(checkSuiteID)
 				} else if strings.HasPrefix(*workflowRun.Path, "dynamic/") {
@@ -327,6 +336,10 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 					}
 					ghaStatus.IgnoredDynamicWorkflowName = workflowName
 					ghaStatus.IgnoredDynamicWorkflowPath = *workflowRun.Path
+					sv.ignoredDynamicWorkflowByJob[*run.Name] = ignoredDynamicWorkflowGroup{
+						WorkflowName: workflowName,
+						WorkflowPath: *workflowRun.Path,
+					}
 				}
 			}
 		}
