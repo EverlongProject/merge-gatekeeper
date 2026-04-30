@@ -11,7 +11,7 @@
 | `interval` | Check interval to recheck the job status. Default is set to 5 (sec).                                                                                                                                                                                                                                 |          |
 | `timeout`  | Timeout setup to give up further check. Default is set to 600 (sec).                                                                                                                                                                                                                                 |          |
 | `success-confirmation-polls` | Number of additional consecutive successful polls required after Merge Gatekeeper first sees all validations as green. `0` keeps the current behavior.                                                                                                                                      |          |
-| `ignored`  | Jobs to ignore regardless of their statuses. Defined as a comma-separated list. Use this for checks you intentionally do not want to gate merges on, for example `CodeQL`.                                                                                                                            |          |
+| `ignored`  | Jobs to ignore regardless of their statuses. Defined as a comma-separated list and matched by exact check name. Use the full check names shown in GitHub, for example `CodeQL / Analyze (go),CodeQL / Analyze (javascript)`.                                                                      |          |
 | `ignore-dynamic-github-workflows` | Ignore check runs whose backing workflow run resolves to a GitHub-managed workflow path under `dynamic/`. This is useful for GitHub-generated workflows such as Copilot review jobs that are not declared in the repository itself. Defaults to `true`; set it to `false` to keep those checks in scope. |          |
 | `ref`      | Git ref to check out. This falls back to the HEAD for given PR, but can be set to any ref.                                                                                                                                                                                                           |          |
 
@@ -79,19 +79,32 @@ Use `success-confirmation-polls` to require additional consecutive successful po
 
 Some checks are created by GitHub itself rather than by workflows committed in the repository. Merge Gatekeeper ignores those checks by default when it resolves a check run back to a workflow run whose path starts with `dynamic/`. Set `ignore-dynamic-github-workflows: false` if you need to keep them in merge evaluation.
 
-CodeQL and other GitHub Advanced Security checks are different. They can appear as GitHub-owned checks without a backing workflow run in the Actions workflow-runs API, so `ignore-dynamic-github-workflows` does not exclude them. If you do not want CodeQL to gate merges, add it to `ignored` explicitly.
+CodeQL and other GitHub Advanced Security checks are different. They can appear as GitHub-owned checks without a backing workflow run in the Actions workflow-runs API, so `ignore-dynamic-github-workflows` does not exclude them. If you do not want CodeQL to gate merges, add it to `ignored` explicitly using the exact check names shown in the PR checks list.
 
 Example:
 
 ```yaml
+---
+name: Merge Gatekeeper
+
+on:
+  pull_request:
+    branches:
+      - main
+
 jobs:
   merge-gatekeeper:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      checks: read
+      statuses: read
     steps:
       - name: Run Merge Gatekeeper
         uses: EverlongProject/merge-gatekeeper@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignored: CodeQL
+          ignored: CodeQL / Analyze (go),CodeQL / Analyze (javascript)
 ```
 
 Lookup failures stay fail-open. Merge Gatekeeper will continue counting the check normally, and the action output will include a `gh api` command you can run to inspect the workflow lookup path directly.
