@@ -47,6 +47,11 @@ type ghaStatus struct {
 	FailedLookupCommand        string
 }
 
+type ignoredDynamicWorkflowResolution struct {
+	WorkflowName string
+	WorkflowPath string
+}
+
 type statusValidator struct {
 	repo                         string
 	owner                        string
@@ -57,7 +62,7 @@ type statusValidator struct {
 	optionErrs                   []error
 	ignoredJobsErrs              []error
 	workflowRunByCheckSuiteCache map[int64]*github.WorkflowRun
-	ignoredDynamicWorkflowByJob  map[string]ignoredDynamicWorkflowGroup
+	ignoredDynamicWorkflowByJob  map[string]ignoredDynamicWorkflowResolution
 	client                       github.Client
 }
 
@@ -305,7 +310,7 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 
 	workflowRunByCheckSuiteMisses := make(map[int64]struct{})
 	if sv.ignoredDynamicWorkflowByJob == nil {
-		sv.ignoredDynamicWorkflowByJob = make(map[string]ignoredDynamicWorkflowGroup)
+		sv.ignoredDynamicWorkflowByJob = make(map[string]ignoredDynamicWorkflowResolution)
 	}
 
 	for _, run := range runResults {
@@ -336,7 +341,7 @@ func (sv *statusValidator) listGhaStatuses(ctx context.Context) ([]*ghaStatus, e
 					}
 					ghaStatus.IgnoredDynamicWorkflowName = workflowName
 					ghaStatus.IgnoredDynamicWorkflowPath = *workflowRun.Path
-					sv.ignoredDynamicWorkflowByJob[*run.Name] = ignoredDynamicWorkflowGroup{
+					sv.ignoredDynamicWorkflowByJob[*run.Name] = ignoredDynamicWorkflowResolution{
 						WorkflowName: workflowName,
 						WorkflowPath: *workflowRun.Path,
 					}
