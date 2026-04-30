@@ -32,6 +32,8 @@ const (
 	maxCheckRunsPerPage = 100
 )
 
+const githubAdvancedSecurityAppSlug = "github-advanced-security"
+
 var (
 	ErrInvalidCombinedStatusResponse = errors.New("github combined status response is invalid")
 	ErrInvalidCheckRunResponse       = errors.New("github checkRun response is invalid")
@@ -251,6 +253,9 @@ func (sv *statusValidator) getWorkflowRunForCheckSuite(ctx context.Context, chec
 
 func (sv *statusValidator) shouldLookupWorkflowPath(run *github.CheckRun) bool {
 	if !sv.ignoreDynamicGitHubWorkflows || run.DetailsURL == nil {
+		return false
+	}
+	if run.App != nil && run.App.Slug != nil && *run.App.Slug == githubAdvancedSecurityAppSlug {
 		return false
 	}
 
