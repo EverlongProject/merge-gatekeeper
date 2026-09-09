@@ -281,6 +281,32 @@ func Test_statusValidator_Validate(t *testing.T) {
 				errJobs:      []string{},
 			},
 		},
+		"returns succeeded status and nil when there is one job, which is itself with different casing": {
+			selfJobName: "self-job",
+			client: &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{
+						Statuses: []*github.RepoStatus{
+							{
+								Context: stringPtr("SELF-JOB"),
+								State:   stringPtr(pendingState), // should be irrelevant
+							},
+						},
+					}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{}, nil, nil
+				},
+			},
+			wantErr: false,
+			wantStatus: &status{
+				succeeded:    true,
+				totalJobs:    []string{},
+				completeJobs: []string{},
+				ignoredJobs:  []string{},
+				errJobs:      []string{},
+			},
+		},
 		"returns failed status and nil when there is one job": {
 			client: &mock.Client{
 				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
@@ -531,6 +557,41 @@ func Test_statusValidator_Validate(t *testing.T) {
 				completeJobs: []string{"job-01"},
 				errJobs:      []string{},
 				ignoredJobs:  []string{"job-02", "job-03"},
+			},
+		},
+		"returns succeeded status and nil when only an ignored job is failing, with different casing": {
+			selfJobName: "self-job",
+			ignoredJobs: []string{"job-02"},
+			client: &mock.Client{
+				GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+					return &github.CombinedStatus{
+						Statuses: []*github.RepoStatus{
+							{
+								Context: stringPtr("job-01"),
+								State:   stringPtr(successState),
+							},
+							{
+								Context: stringPtr("Job-02"),
+								State:   stringPtr(errorState),
+							},
+							{
+								Context: stringPtr("self-job"),
+								State:   stringPtr(pendingState),
+							},
+						},
+					}, nil, nil
+				},
+				ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+					return &github.ListCheckRunsResults{}, nil, nil
+				},
+			},
+			wantErr: false,
+			wantStatus: &status{
+				succeeded:    true,
+				totalJobs:    []string{"job-01"},
+				completeJobs: []string{"job-01"},
+				errJobs:      []string{},
+				ignoredJobs:  []string{"job-02"},
 			},
 		},
 		"returns succeeded status when only dynamic workflow checks fail and ignoring is enabled": {
