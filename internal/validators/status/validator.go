@@ -138,14 +138,14 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 
 		var toIgnore bool
 		for _, ignored := range sv.ignoredJobs {
-			if ghaStatus.Job == ignored {
+			if strings.EqualFold(ghaStatus.Job, ignored) {
 				toIgnore = true
 				break
 			}
 		}
 
 		// Ignored jobs and this job itself should be considered as success regardless of their statuses.
-		if toIgnore || ghaStatus.Job == sv.selfJobName {
+		if toIgnore || strings.EqualFold(ghaStatus.Job, sv.selfJobName) {
 			successCnt++
 			continue
 		}
