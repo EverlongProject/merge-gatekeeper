@@ -61,6 +61,8 @@ type statusValidator struct {
 	ignoreDynamicGitHubWorkflows bool
 	optionErrs                   []error
 	ignoredJobsErrs              []error
+	requiredContexts             []string
+	requiredContextsErrs         []error
 	workflowRunByCheckSuiteCache map[int64]*github.WorkflowRun
 	ignoredDynamicWorkflowByJob  map[string]ignoredDynamicWorkflowResolution
 	client                       github.Client
@@ -104,6 +106,15 @@ func (sv *statusValidator) validateFields() error {
 	}
 	errs = append(errs, sv.optionErrs...)
 	errs = append(errs, sv.ignoredJobsErrs...)
+	errs = append(errs, sv.requiredContextsErrs...)
+	for _, required := range sv.requiredContexts {
+		if containsJob(sv.ignoredJobs, required) {
+			errs = append(errs, fmt.Errorf("%q is listed in both required contexts and ignored jobs", required))
+		}
+		if strings.EqualFold(required, sv.selfJobName) {
+			errs = append(errs, fmt.Errorf("%q is the self job and cannot be a required context", required))
+		}
+	}
 
 	if len(errs) != 0 {
 		return errors.Join(errs...)
@@ -130,22 +141,15 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 
 	var successCnt int
 	for _, ghaStatus := range ghaStatuses {
-		if ghaStatus.IgnoredDynamicWorkflowPath != "" {
+		// A required name overrides the dynamic-workflow ignore, so the run is judged by its real state.
+		if ghaStatus.IgnoredDynamicWorkflowPath != "" && !containsJob(sv.requiredContexts, ghaStatus.Job) {
 			successCnt++
 			st.addIgnoredDynamicWorkflow(ghaStatus.IgnoredDynamicWorkflowName, ghaStatus.IgnoredDynamicWorkflowPath, ghaStatus.Job)
 			continue
 		}
 
-		var toIgnore bool
-		for _, ignored := range sv.ignoredJobs {
-			if strings.EqualFold(ghaStatus.Job, ignored) {
-				toIgnore = true
-				break
-			}
-		}
-
 		// Ignored jobs and this job itself should be considered as success regardless of their statuses.
-		if toIgnore || strings.EqualFold(ghaStatus.Job, sv.selfJobName) {
+		if containsJob(sv.ignoredJobs, ghaStatus.Job) || strings.EqualFold(ghaStatus.Job, sv.selfJobName) {
 			successCnt++
 			continue
 		}
@@ -170,12 +174,39 @@ func (sv *statusValidator) Validate(ctx context.Context) (validators.Status, err
 		return nil, errors.New(st.Detail())
 	}
 
-	if len(ghaStatuses) != successCnt {
+	// A required context that has not registered yet is reported as incomplete.
+	missingRequired := false
+	for _, required := range sv.requiredContexts {
+		if !containsGhaJob(ghaStatuses, required) {
+			st.totalJobs = append(st.totalJobs, required)
+			missingRequired = true
+		}
+	}
+
+	if len(ghaStatuses) != successCnt || missingRequired {
 		st.succeeded = false
 		return st, nil
 	}
 
 	return st, nil
+}
+
+func containsJob(jobs []string, job string) bool {
+	for _, j := range jobs {
+		if strings.EqualFold(j, job) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsGhaJob(statuses []*ghaStatus, job string) bool {
+	for _, s := range statuses {
+		if strings.EqualFold(s.Job, job) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *status) addIgnoredDynamicWorkflow(workflowName, workflowPath, job string) {
