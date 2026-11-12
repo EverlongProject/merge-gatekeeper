@@ -128,6 +128,43 @@ func TestCreateValidator(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		"returns error listing empty required context entries": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("job-01"),
+				WithRequiredContexts("job-02,,"),
+			},
+			want:              nil,
+			wantErr:           true,
+			wantErrSubstrings: []string{"required contexts contains empty entry at position 2", "required contexts contains empty entry at position 3"},
+		},
+		"returns error when a context is both required and ignored, ignoring case": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("job-01"),
+				WithIgnoredJobs("job-02,job-03"),
+				WithRequiredContexts("job-04,JOB-03"),
+			},
+			want:              nil,
+			wantErr:           true,
+			wantErrSubstrings: []string{`"JOB-03" is listed in both required contexts and ignored jobs`},
+		},
+		"returns error when a required context is the self job, ignoring case": {
+			c: &mock.Client{},
+			opts: []Option{
+				WithGitHubOwnerAndRepo("test", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("merge-gatekeeper"),
+				WithRequiredContexts("job-04,Merge-Gatekeeper"),
+			},
+			want:              nil,
+			wantErr:           true,
+			wantErrSubstrings: []string{`"Merge-Gatekeeper" is the self job and cannot be a required context`},
+		},
 		"returns error when option is empty": {
 			c:       &mock.Client{},
 			want:    nil,
@@ -670,6 +707,99 @@ func Test_statusValidator_Validate(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.wantStatus) {
 				t.Errorf("statusValidator.Validate() status = %v, want %v", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func Test_statusValidator_Validate_requiredContextResolvedToDynamicWorkflow(t *testing.T) {
+	newClient := func(status string, conclusion *string) *mock.Client {
+		return &mock.Client{
+			GetCombinedStatusFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListOptions) (*github.CombinedStatus, *github.Response, error) {
+				return &github.CombinedStatus{}, nil, nil
+			},
+			ListCheckRunsForRefFunc: func(ctx context.Context, owner, repo, ref string, opts *github.ListCheckRunsOptions) (*github.ListCheckRunsResults, *github.Response, error) {
+				return &github.ListCheckRunsResults{
+					Total: ghapi.Int(2),
+					CheckRuns: []*github.CheckRun{
+						{
+							Name:       stringPtr("Agent"),
+							Status:     stringPtr(status),
+							Conclusion: conclusion,
+							DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/2"),
+							CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+						},
+						{
+							Name:       stringPtr("Cleanup artifacts"),
+							Status:     stringPtr(checkRunCompletedStatus),
+							Conclusion: stringPtr("failure"),
+							DetailsURL: stringPtr("https://github.com/test-owner/test-repo/actions/runs/1/job/3"),
+							CheckSuite: &ghapi.CheckSuite{ID: ghapi.Int64(123)},
+						},
+					},
+				}, nil, nil
+			},
+			ListRepositoryWorkflowRunsFunc: func(ctx context.Context, owner, repo string, opts *github.ListWorkflowRunsOptions) (*github.WorkflowRuns, *github.Response, error) {
+				return &github.WorkflowRuns{
+					WorkflowRuns: []*github.WorkflowRun{
+						{
+							Name: stringPtr("Copilot code review"),
+							Path: stringPtr("dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer"),
+						},
+					},
+				}, nil, nil
+			},
+		}
+	}
+
+	tests := map[string]struct {
+		status        string
+		conclusion    *string
+		wantSucceeded bool
+		wantErr       bool
+	}{
+		"a pending required run does not pass": {
+			status: "in_progress",
+		},
+		"a failed required run fails": {
+			status:     checkRunCompletedStatus,
+			conclusion: stringPtr("failure"),
+			wantErr:    true,
+		},
+		"a green required run passes": {
+			status:        checkRunCompletedStatus,
+			conclusion:    stringPtr(checkRunSuccessConclusion),
+			wantSucceeded: true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			v, err := CreateValidator(newClient(tt.status, tt.conclusion),
+				WithGitHubOwnerAndRepo("test-owner", "test-repo"),
+				WithGitHubRef("sha"),
+				WithSelfJob("self-job"),
+				WithRequiredContexts("agent"),
+			)
+			if err != nil {
+				t.Fatalf("CreateValidator() error = %v", err)
+			}
+
+			got, err := v.Validate(context.Background())
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "::group::Failed jobs\n- Agent\n::endgroup::") {
+					t.Fatalf("Validate() error = %v, want a failure naming Agent", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if got.IsSuccess() != tt.wantSucceeded {
+				t.Errorf("Validate() IsSuccess = %v, want %v\n%s", got.IsSuccess(), tt.wantSucceeded, got.Detail())
+			}
+			// The unrequired run from the same dynamic workflow stays ignored.
+			if !strings.Contains(got.Detail(), "Ignored dynamic workflow check count: 1") {
+				t.Errorf("Validate() detail does not show one ignored dynamic check:\n%s", got.Detail())
 			}
 		})
 	}

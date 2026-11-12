@@ -81,6 +81,8 @@ You can find [more details here](/docs/action-usage.md).
 
 If your CI generates jobs dynamically and GitHub can register those child jobs slightly after Merge Gatekeeper first sees the workflow as green, set `success-confirmation-polls` to require additional consecutive successful polls before the action exits. Leave it at the default `0` unless you need that extra confirmation window.
 
+If your CI registers its first status late, for example CircleCI with dynamic configuration, Merge Gatekeeper can see an empty or partial all-green set and pass before CI has started. Set `required-contexts` to the status or check names that CI always posts, such as `ci/circleci: setup_branch_config`, so Merge Gatekeeper waits until they exist and are green.
+
 ## 🧪 Action Inputs
 
 There are some customisation available for Merge Gatekeeper.
@@ -95,6 +97,7 @@ There are some customisation available for Merge Gatekeeper.
 | `timeout`  | Timeout setup to give up further check. Default is set to 600 (sec).                                                                                                                                                                                                                                 |          |
 | `success-confirmation-polls` | Number of additional consecutive successful polls required after Merge Gatekeeper first sees all validations as green. `0` keeps the current behavior.                                                                                                                                      |          |
 | `ignored`  | Jobs to ignore regardless of their statuses. Defined as a comma-separated list and matched by exact check name. Use the full check names shown in GitHub, for example `CodeQL / Analyze (go),CodeQL / Analyze (javascript)`.                                                                      |          |
+| `required-contexts` | Commit statuses or check runs that must exist on the ref before Merge Gatekeeper can succeed. Defined as a comma-separated list and matched the same way as `ignored`, for example `ci/circleci: setup_branch_config`. A missing one keeps Merge Gatekeeper polling until it appears or `timeout` is reached. A required check run that ends `skipped` never satisfies the requirement. A required name is checked even when it comes from a GitHub-managed dynamic workflow. A name must not also be in `ignored` and must not be the `self` job. |          |
 | `ignore-dynamic-github-workflows` | Ignore check runs whose backing workflow run resolves to a GitHub-managed workflow path under `dynamic/`. This is useful for GitHub-generated workflows such as Copilot review jobs that are not declared in the repository itself. Defaults to `true`; set it to `false` to keep those checks in scope. |          |
 | `ref`      | Git ref to check out. This falls back to the HEAD for given PR, but can be set to any ref.                                                                                                                                                                                                           |          |
 
