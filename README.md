@@ -103,6 +103,8 @@ There are some customisation available for Merge Gatekeeper.
 
 <!-- == imptr: inputs / end == -->
 
+When you run the `merge-gatekeeper` binary directly, `--token` is optional. If you do not set `--token`, the binary reads the token from the `GITHUB_TOKEN` environment variable.
+
 If you want to exclude CodeQL or other GitHub Advanced Security checks from merge gating, use `ignored` with the exact check names shown in GitHub. Those checks do not always have a backing workflow run in the Actions workflow-runs API, so `ignore-dynamic-github-workflows` does not exclude them.
 
 You can find [more details here](/docs/action-usage.md).
