@@ -22,7 +22,7 @@ func Run(version string, args ...string) error {
 		Version: version,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if ghToken == "" {
-				ghToken = os.Getenv("GITHUB_TOKN")
+				ghToken = os.Getenv("GITHUB_TOKEN")
 			}
 			if ghToken == "" {
 				return fmt.Errorf("github token is required: set --token or the GITHUB_TOKEN environment variable")
