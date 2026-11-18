@@ -44,8 +44,24 @@ func WithIgnoredJobs(names string) Option {
 		if len(errs) != 0 {
 			return
 		}
-		s.ignoredJobs = jobs
+		s.ignoredJobs = dedupeJobNames(jobs)
 	}
+}
+
+// dedupeJobNames keeps the first spelling of each name. It ignores case,
+// because ignored jobs match job names case-insensitively.
+func dedupeJobNames(names []string) []string {
+	jobs := make([]string, 0, len(names))
+	seen := map[string]struct{}{}
+	for _, name := range names {
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		jobs = append(jobs, name)
+	}
+	return jobs
 }
 
 // WithRequiredContexts names statuses or check runs that must exist on the ref
