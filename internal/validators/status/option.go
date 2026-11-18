@@ -39,12 +39,17 @@ func WithIgnoredJobs(names string) Option {
 		}
 
 		jobs := []string{}
+		seen := map[string]struct{}{}
 		ss := strings.Split(names, ",")
 		for _, s := range ss {
 			jobName := strings.TrimSpace(s)
 			if len(jobName) == 0 {
 				continue // TODO: Provide more clue to users
 			}
+			if _, ok := seen[jobName]; ok {
+				continue
+			}
+			seen[jobName] = struct{}{}
 			jobs = append(jobs, jobName)
 		}
 		s.ignoredJobs = jobs
