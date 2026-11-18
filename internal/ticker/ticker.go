@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// InstantTicker fires once at once, then at each interval.
 type InstantTicker interface {
 	Stop()
 	C() <-chan time.Time
