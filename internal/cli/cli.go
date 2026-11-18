@@ -27,7 +27,6 @@ func Run(version string, args ...string) error {
 			if ghToken == "" {
 				return fmt.Errorf("github token is required: set --token or the GITHUB_TOKEN environment variable")
 			}
-			fmt.Printf("Using GitHub token %s\n", ghToken)
 			return nil
 		},
 	}
