@@ -73,7 +73,7 @@ func validateCmd() *cobra.Command {
 	cmd.MarkPersistentFlagRequired("ref")
 
 	cmd.PersistentFlags().UintVar(&timeoutSecond, "timeout", 600, "set validate timeout second")
-	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second (must be greather than 0)")
+	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second (must be greater than 0)")
 	cmd.PersistentFlags().UintVar(&successConfirmationPolls, "success-confirmation-polls", 0, "set additional successful polls required after first green")
 
 	cmd.PersistentFlags().StringVarP(&ignoredJobs, "ignored", "i", "", "set ignored jobs (comma-separated list)")
