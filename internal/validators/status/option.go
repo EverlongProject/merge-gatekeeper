@@ -36,7 +36,8 @@ func WithGitHubRef(ref string) Option {
 
 func WithIgnoredJobs(names string) Option {
 	return func(s *statusValidator) {
-		if len(names) == 0 {
+		// An unset workflow input can arrive as whitespace only; treat it as no ignored jobs.
+		if len(strings.TrimSpace(names)) == 0 {
 			return
 		}
 		jobs, errs := parseJobList("ignored jobs", names)
