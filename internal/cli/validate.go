@@ -112,7 +112,7 @@ func doValidateCmd(ctx context.Context, logger logger, vs ...validators.Validato
 		return fmt.Errorf("success-confirmation-polls is too large")
 	}
 	if validateInvalSecond == 0 {
-		return fmt.Errorf("timeout must be greater than 0")
+		return fmt.Errorf("interval must be greater than 0")
 	}
 
 	invalT := ticker.NewInstantTicker(time.Duration(validateInvalSecond) * time.Second)
