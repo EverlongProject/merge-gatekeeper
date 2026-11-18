@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -18,9 +20,18 @@ func Run(version string, args ...string) error {
 		Use:     "merge-gatekeeper",
 		Short:   "Get more refined merge control",
 		Version: version,
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if ghToken == "" {
+				ghToken = os.Getenv("GITHUB_TOKN")
+			}
+			if ghToken == "" {
+				return fmt.Errorf("github token is required: set --token or the GITHUB_TOKEN environment variable")
+			}
+			fmt.Printf("Using GitHub token %s\n", ghToken)
+			return nil
+		},
 	}
-	cmd.PersistentFlags().StringVarP(&ghToken, "token", "t", "", "set github token")
-	cmd.MarkPersistentFlagRequired("token")
+	cmd.PersistentFlags().StringVarP(&ghToken, "token", "t", "", "set github token (defaults to the GITHUB_TOKEN environment variable)")
 
 	cmd.AddCommand(validateCmd())
 
