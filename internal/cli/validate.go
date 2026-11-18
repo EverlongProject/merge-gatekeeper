@@ -73,7 +73,7 @@ func validateCmd() *cobra.Command {
 	cmd.MarkPersistentFlagRequired("ref")
 
 	cmd.PersistentFlags().UintVar(&timeoutSecond, "timeout", 600, "set validate timeout second")
-	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second")
+	cmd.PersistentFlags().UintVar(&validateInvalSecond, "interval", 10, "set validate interval second (must be greather than 0)")
 	cmd.PersistentFlags().UintVar(&successConfirmationPolls, "success-confirmation-polls", 0, "set additional successful polls required after first green")
 
 	cmd.PersistentFlags().StringVarP(&ignoredJobs, "ignored", "i", "", "set ignored jobs (comma-separated list)")
@@ -110,6 +110,9 @@ func doValidateCmd(ctx context.Context, logger logger, vs ...validators.Validato
 
 	if successConfirmationPolls == ^uint(0) {
 		return fmt.Errorf("success-confirmation-polls is too large")
+	}
+	if validateInvalSecond == 0 {
+		return fmt.Errorf("timeout must be greater than 0")
 	}
 
 	invalT := ticker.NewInstantTicker(time.Duration(validateInvalSecond) * time.Second)
