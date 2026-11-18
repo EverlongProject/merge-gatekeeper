@@ -19,13 +19,15 @@ const defaultSelfJobName = "merge-gatekeeper"
 
 // These variables will be set by command line flags.
 var (
-	ghRepo                   string // e.g) EverlongProject/merge-gatekeeper
-	ghRef                    string
-	timeoutSecond            uint
-	validateInvalSecond      uint
-	successConfirmationPolls uint
-	selfJobName              string
-	ignoredJobs              string
+	ghRepo                       string // e.g) EverlongProject/merge-gatekeeper
+	ghRef                        string
+	timeoutSecond                uint
+	validateInvalSecond          uint
+	successConfirmationPolls     uint
+	selfJobName                  string
+	ignoredJobs                  string
+	requiredContexts             string
+	ignoreDynamicGitHubWorkflows bool
 )
 
 func validateCmd() *cobra.Command {
@@ -51,6 +53,8 @@ func validateCmd() *cobra.Command {
 				status.WithGitHubOwnerAndRepo(owner, repo),
 				status.WithGitHubRef(ghRef),
 				status.WithIgnoredJobs(ignoredJobs),
+				status.WithRequiredContexts(requiredContexts),
+				status.WithIgnoreDynamicGitHubWorkflows(ignoreDynamicGitHubWorkflows),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create validator: %w", err)
@@ -73,6 +77,8 @@ func validateCmd() *cobra.Command {
 	cmd.PersistentFlags().UintVar(&successConfirmationPolls, "success-confirmation-polls", 0, "set additional successful polls required after first green")
 
 	cmd.PersistentFlags().StringVarP(&ignoredJobs, "ignored", "i", "", "set ignored jobs (comma-separated list)")
+	cmd.PersistentFlags().StringVar(&requiredContexts, "required-contexts", "", "set statuses or check runs that must exist before success (comma-separated list)")
+	cmd.PersistentFlags().BoolVar(&ignoreDynamicGitHubWorkflows, "ignore-dynamic-github-workflows", true, "ignore check runs from GitHub-managed dynamic workflows")
 
 	return cmd
 }

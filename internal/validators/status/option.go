@@ -1,6 +1,9 @@
 package status
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type Option func(s *statusValidator)
 
@@ -33,25 +36,63 @@ func WithGitHubRef(ref string) Option {
 
 func WithIgnoredJobs(names string) Option {
 	return func(s *statusValidator) {
-		// TODO: Add more input validation, such as "," should not be a valid input.
 		if len(names) == 0 {
-			return // TODO: Return some clearer error
+			return
 		}
+		jobs, errs := parseJobList("ignored jobs", names)
+		s.ignoredJobsErrs = errs
+		if len(errs) != 0 {
+			return
+		}
+		s.ignoredJobs = dedupeJobs(jobs)
+	}
+}
 
-		jobs := []string{}
-		seen := map[string]struct{}{}
-		ss := strings.Split(names, ",")
-		for _, s := range ss {
-			jobName := strings.TrimSpace(s)
-			if len(jobName) == 0 {
-				continue // TODO: Provide more clue to users
-			}
-			if _, ok := seen[jobName]; ok {
-				continue
-			}
-			seen[jobName] = struct{}{}
-			jobs = append(jobs, jobName)
+// WithRequiredContexts names statuses or check runs that must exist on the ref
+// before it can pass; an absent one keeps the validation pending.
+func WithRequiredContexts(names string) Option {
+	return func(s *statusValidator) {
+		if len(names) == 0 {
+			return
 		}
-		s.ignoredJobs = jobs
+		contexts, errs := parseJobList("required contexts", names)
+		s.requiredContextsErrs = errs
+		if len(errs) != 0 {
+			return
+		}
+		s.requiredContexts = contexts
+	}
+}
+
+func parseJobList(label, names string) ([]string, []error) {
+	jobs := []string{}
+	errs := make([]error, 0)
+	for index, name := range strings.Split(names, ",") {
+		jobName := strings.TrimSpace(name)
+		if len(jobName) == 0 {
+			errs = append(errs, fmt.Errorf("%s contains empty entry at position %d", label, index+1))
+			continue
+		}
+		jobs = append(jobs, jobName)
+	}
+	return jobs, errs
+}
+
+func dedupeJobs(jobs []string) []string {
+	seen := make(map[string]struct{}, len(jobs))
+	out := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if _, ok := seen[job]; ok {
+			continue
+		}
+		seen[job] = struct{}{}
+		out = append(out, job)
+	}
+	return out
+}
+
+func WithIgnoreDynamicGitHubWorkflows(ignore bool) Option {
+	return func(s *statusValidator) {
+		s.ignoreDynamicGitHubWorkflows = ignore
 	}
 }
