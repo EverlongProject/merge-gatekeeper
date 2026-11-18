@@ -27,7 +27,7 @@ type failedLookupCheck struct {
 	Command string
 }
 
-func prettyPrintJobList(jobs []string) string {
+func formatJobList(jobs []string) string {
 	result := ""
 	if len(jobs) == 0 {
 		result = "[]"
@@ -94,13 +94,13 @@ Failed lookup count:   %d
 ::endgroup::
 `,
 		result,
-		prettyPrintJobList(s.errJobs),
-		prettyPrintJobList(s.completeJobs),
-		prettyPrintJobList(s.getIncompleteJobs()),
-		prettyPrintJobList(s.ignoredJobs),
+		formatJobList(s.errJobs),
+		formatJobList(s.completeJobs),
+		formatJobList(s.getIncompleteJobs()),
+		formatJobList(s.ignoredJobs),
 		s.formatIgnoredDynamicWorkflows(),
 		s.formatFailedLookupChecks(),
-		prettyPrintJobList(s.totalJobs),
+		formatJobList(s.totalJobs),
 	)
 
 	return result
